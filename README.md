@@ -4,12 +4,27 @@
 
 本仓库公开工具源码、测试和文档。运行时使用的数据、图片、更新游标和生成结果放在独立的数据目录中，由 `MASH_DATA_ROOT` 指定。维护者使用私有仓库 `mash-data-private` 管理这些内容；参与代码开发无需访问该仓库。
 
+仓库中的 GitHub Actions 用于自动更新、构建和发布**官方 Mash 数据包**，由项目维护者运行。官方数据保存在 `mash-data-private`，发布产物上传至官方 Cloudflare R2 存储。
+
 ## 功能
 
 - 根据 Atlas 数据版本和 Changes 日志更新从者详情，补齐缺失图片与概念礼装。
 - 生成 JP/CN 从者战斗形态，收集技能切换依赖，汇总客户端所需 JSON。
 - 检查形态技能的来源与元数据，生成目标选择、选项选择等分析报告。
 - 构建基础资源包、增量补丁和离线导入包，并通过现有脚本上传至 Cloudflare R2。
+
+## 官方 Mash 数据包的自动化构建与发布
+
+现有 Actions 将官方数据维护分为两条独立流程：
+
+| Action | 用途 |
+| --- | --- |
+| [Update private data](.github/workflows/data-update.yml) | 拉取官方 private 仓库，自动更新 Atlas 数据、客户端资源和 state，记录本次更改并提交回 private |
+| [Release private assets](.github/workflows/assets-release.yml) | 基于官方 private 分支的最新提交，自动校验、构建数据包，并在启用发布时上传至官方 R2、更新发布入口 |
+
+两条流程目前均由维护者从 `main` 手动触发，触发后的更新、构建和发布步骤自动执行。发布版本由 private 的 `assets/version.json` 管理；发布 Action 默认只构建校验，勾选 `publish` 后执行正式发布。
+
+流程说明及官方发布环境的配置见 [官方 Mash 数据包构建与发布](docs/pipelines.md)。下面的快速开始面向工具源码开发和本地运行，代码开发无需配置官方发布凭据。
 
 ## 快速开始
 
@@ -114,6 +129,7 @@ npm start
 | [数据获取与缓存](docs/data-fetch-strategy.md) | 增量更新、游标推进和失败重试行为 |
 | [战斗形态数据格式](mash-atlasacademy/docs/servant-variants.md) | 字段含义、分组规则与运行时技能 |
 | [资源构建与部署](docs/deployment.md) | 基础包、补丁、离线包与 R2 上传 |
+| [官方 Mash 数据包构建与发布](docs/pipelines.md) | 官方数据更新、数据包自动构建与发布，以及维护者配置 |
 
 TypeScript 的公共配置在根目录 `tsconfig.base.json`，根脚本和各模块的 `tsconfig.json` 在此基础上配置各自入口。
 

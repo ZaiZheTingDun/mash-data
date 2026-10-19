@@ -1,0 +1,111 @@
+# 官方 Mash 数据包的自动化构建与发布
+
+本仓库现有的 GitHub Actions 用于自动化维护和发布**官方 Mash 数据包**：先更新官方数据并提交到私有仓库，再基于已提交的数据自动校验、构建资源包，发布至官方 Cloudflare R2 存储，供 Mash 客户端获取。
+
+两条 workflow 在公开的 `mash-data` 仓库维护，由项目维护者从 `main` 手动触发，后续步骤自动执行。数据更新与数据包发布独立运行，更新成功不会自动触发正式发布。本文中的 private 指官方数据仓库，必须通过 `PRIVATE_DATA_REPOSITORY` 指定，分支默认使用 `main`；GitHub 权限、凭据和 R2 配置面向官方数据包的发布维护者。
+
+## 官方数据包的维护流程
+
+1. 运行 **Update private data**，自动拉取 Atlas 数据、生成客户端资源、更新 state，并将数据与本次更改记录一起提交到官方 private 仓库。
+2. 检查 private 中的更新提交和变更记录，设置并提交 `assets/version.json` 中的官方数据包版本。
+3. 运行 **Release private assets**，读取 private 分支最新内容，自动校验并构建本次数据包。默认 `publish=false`，用于构建验证；正式发布时勾选 `publish`，自动上传并更新官方发布入口。
+
+工具代码取本次 workflow 的 commit，数据取 private 指定分支的最新 commit，每次构建都记录实际使用的数据与工具版本。两条流程共用并发组，不同时更新或发布；已经运行的任务不会被新任务取消。GitHub 同一并发组只保留一个待执行任务，多次重复触发可能替换尚未开始的任务。
+
+## 1. 更新官方数据：Update private data
+
+入口：[data-update.yml](../.github/workflows/data-update.yml)。
+
+1. 安装工具依赖，运行类型检查与临时数据测试。
+2. 拉取 private 数据分支，沿用已有 `state/atlas-data-version.json`，不清空缓存或重置游标。
+3. 补齐魔术礼装，运行 `npm start` 更新从者、概念礼装、runtime skill、variants 和客户端资源，再补齐技能图标。
+4. 根据更新后的 resources 重新生成分析报告，检查资源分包是否齐全、JSON 是否有效、图片能否解码及已知图片/技能图标引用是否缺失。
+5. 暂存 `assets/`、`resources/`、`state/`、`verification/result/` 的增删改，在 private 创建 `state/updates/<run-id>-<attempt>.json`。
+6. 将数据和记录一起提交、推送回同一 private 分支。没有文件变化时不创建记录或空提交。
+
+每条变更记录保存运行链接、工具 commit、更新前 private commit、JP/CN state 前后值、A/M/D 数量以及完整文件路径清单。记录列出的文件不包含记录自身；需要查看具体字段差异时，对比该提交与父提交。
+
+任一步骤失败均不提交、不推送。下载器在图片、礼装、魔术礼装或图标下载失败时返回失败。各地区源 JSON 成功后仍按原规则推进 runner 本地游标；只有整条更新流程成功，数据和游标才一起进入 private。生成过程中失败的 runner 快照被丢弃，下次从 private 已提交的 state 重试。
+
+推送使用普通 Git push。若运行期间有人推进 private 分支，推送会失败；不会 force push 或将生成结果自动 rebase 到另一份数据上，需重新运行。
+
+更新流程不修改资源发布版本号、不上传 R2，也不自动触发发布。
+
+## 2. 构建与发布官方数据包：Release private assets
+
+入口：[assets-release.yml](../.github/workflows/assets-release.yml)。
+
+1. 拉取 private 分支最新提交，并固定这次 checkout 的 commit。
+2. 验证已提交的 variants、资源 JSON 和图片；不访问 Atlas，也不重新生成数据或推进 state。
+3. 从 private 的 `assets/version.json` 读取目标整数版本，从 R2 的 `latest.json` 读取已发布版本。目标版本必须更大；版本由维护者在 private 中修改并提交。
+4. 默认生成从 R2 当前版本到目标版本的 patch，保留已发布 base 和历史 patch 路线。从 R2 的上一版 manifest/state 读取历史对象校验信息和文件状态。
+5. `publish=false` 时只构建和校验，不写 R2。`publish=true` 时先上传版本化 ZIP、state、校验文件，再上传 manifest；所有引用对象均从 R2 S3 API 回读并校验大小和 SHA-256，最后切换 `latest.json`。
+
+workflow 输入：
+
+| 输入 | 默认值 | 含义 |
+| --- | --- | --- |
+| `mode` | `patch` | 日常用 patch；空目标首次发布可用 base |
+| `publish` | `false` | 勾选后才上传并更新 latest |
+| `base_compatible` | `false` | 已有线上版本时，重建 base 必须确认受支持客户端兼容 |
+
+pipeline 在 runner 内根据线上 manifest 生成本次清单，并在构建后恢复 checkout 中的 `assets/manifest.json`；无需在 private 手工维护 patch 链。生成的发布 manifest 带有 `source.dataCommit` / `source.codeCommit`，便于定位数据与工具版本。不会把发布产物或清单回写 private。
+
+删除受管理文件时，需先在 private 提交与目标版本及实际删除清单完全一致的 `state/release-deletions.json`，例如：
+
+```json
+{
+  "version": 15,
+  "files": ["skills/123/skill.json"]
+}
+```
+
+这是删除白名单，不能用一个开关放行未知缺失。缺少整类资源、损坏图片或缺失引用也会阻止发布。
+
+历史版本若没有 state，patch 会失败；必须恢复与该发布版本内容完全一致的 `states/asset-state-v<版本>.json`，并在其 latest 中提供正确的校验元数据，不能拿当前数据冒充旧状态。重建 base 还涉及旧客户端兼容性，不会自动作为 patch 的降级方案。
+
+版本化对象通过 `If-None-Match: *` 创建，已有同键对象只在回读校验一致时复用，不覆盖不同内容。latest 通过准备阶段读取的 ETag 执行 `If-Match` 条件写入；首次发布用 `If-None-Match: *`。这也防止 Actions 以外的并发发布被覆盖。R2 支持这些条件写入，见 [Cloudflare 文档](https://developers.cloudflare.com/r2/api/s3/api/)。
+
+上传或校验失败时，不推进 latest。保留同一份构建产物可重试未完成的上传；重新运行 workflow 会重新构建，ZIP 时间戳等可能变化。若前次已写入同版本对象，新产物不一致会失败，此时应使用新的 private 发布版本，不能覆盖已写入的对象。latest 成功切换后若最终回读失败，需检查线上实际状态，不应据此认定未发布。
+
+版本化对象缓存一年并标记 immutable，latest 使用 60 秒缓存并要求过期后重新验证。上传验证通过 R2 S3 API，不以公共 CDN 缓存判断上传是否成功；实际客户端升级仍需单独验证。
+
+## 官方发布环境配置
+
+官方发布维护者在公开库创建 `data-update` 和 `assets-release` environments，部署分支限制为 `main`，并配置官方 private 仓库的访问凭据及官方 R2 目标。两者可配置相同的 repository variables：
+
+| Variable | 用途 |
+| --- | --- |
+| `PRIVATE_DATA_REPOSITORY` | 必填，官方 private 仓库，格式为 `owner/repo`；未配置时 workflow 直接失败 |
+| `PRIVATE_DATA_BRANCH` | 可选，默认 `main`；两条流程应指向同一分支 |
+| `R2_ENDPOINT` | 发布必填，R2 S3 endpoint |
+| `R2_BUCKET` | 发布必填，目标桶 |
+| `R2_PREFIX` | 可选，默认 `mash` |
+| `ASSETS_PREFIX` | 可选，默认 `assets` |
+
+配置以下 secrets，可按用途放在对应 environment 内：
+
+| Secret | Environment | 权限 |
+| --- | --- | --- |
+| `PRIVATE_DATA_WRITE_TOKEN` | `data-update` | Fine-grained PAT，仅 private 仓库的 Contents read/write，用于 checkout 和 push |
+| `PRIVATE_DATA_READ_TOKEN` | `assets-release` | Fine-grained PAT，仅 private 仓库的 Contents read，用于 checkout |
+| `R2_ACCESS_KEY_ID` | `assets-release` | R2 API 凭据，限目标桶读写 |
+| `R2_SECRET_ACCESS_KEY` | `assets-release` | 对应 R2 secret access key |
+
+公开库的 `GITHUB_TOKEN` 不能直接访问另一个 private 仓库，见 [checkout 官方说明](https://github.com/actions/checkout#checkout-multiple-repos-private)。公开库本身仅申请 `contents: read`；private 写权限来自专用 token。private 分支规则须允许该 token 所属账号提交数据变更。
+
+两个 workflow 不执行 private 仓库内的脚本，只把它作为数据目录；不会上传 private checkout、更新记录或资源包为公开 Actions artifact。公开库的运行日志和 summary 仍可公开查看，summary 仅保存 commit、版本和数量，详细更改记录留在 private。
+
+## 开发与本地验证
+
+以下命令用于开发和检查构建工具；临时数据测试无需官方 private 仓库或发布凭据。新增 Python 校验器需要 Pillow；原有 `scripts/release.py` 打包器仍只用标准库。
+
+```bash
+python3 -m pip install -r scripts/requirements-pipeline.txt
+python3 -m unittest discover -s scripts/tests -v
+MASH_DATA_ROOT=/absolute/path/to/mash-data-private python3 scripts/validate_assets.py
+```
+
+配置 `MASH_DATA_ROOT` 和 R2 凭据后，可在**可丢弃的数据副本**上执行 `python3 scripts/pipeline_release.py prepare --mode patch`；它会清空数据副本下的 `dist/`。`publish` 子命令会真实发布，应仅在检查产物后执行。
+
+这两条 workflow 使用新的 `pipeline_release.py` 发布入口；旧的 `assets:deploy` 仍为 [原有整目录同步脚本](deployment.md)，不具备这里的条件写入和逐对象验证流程。

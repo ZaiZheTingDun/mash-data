@@ -394,6 +394,29 @@ test("advances JP independently when CN JSON refresh fails", async () => {
   assert.equal(written.CN?.hash, "aaaaaa");
 });
 
+test("image failures fail the update while preserving the JSON cursor semantics", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mash-image-failure-"));
+  const versionPath = join(root, "data-version.json");
+  const versions: AtlasDataVersions = {
+    JP: { hash: "cccccc", timestamp: 300 },
+    CN: { hash: "cccccc", timestamp: 300 },
+  };
+  await assert.rejects(downloadAllServants({
+    dataVersionFile: versionPath,
+    dependencies: {
+      fetchVersions: async () => versions,
+      readVersions: async () => ({}),
+      fetchBasic: async () => [{ id: 1, collectionNo: 1 }] as BasicServant[],
+      inspectCache: async () => ({ valid: [], missing: new Set(), invalid: new Set() }),
+      downloadJson: async () => "downloaded",
+      downloadImages: async () => { throw new Error("broken image download"); },
+    },
+  }), /1 servant image downloads failed/);
+  const written = await readDataVersions(versionPath);
+  assert.equal(written.JP?.hash, "cccccc");
+  assert.equal(written.CN?.hash, "cccccc");
+});
+
 test("unchanged hashes skip Changes but still repair a missing cache", async () => {
   const root = await mkdtemp(join(tmpdir(), "mash-unchanged-version-"));
   const versionPath = join(root, "data-version.json");

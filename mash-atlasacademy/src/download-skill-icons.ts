@@ -3,8 +3,7 @@ import { readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { runWithConcurrency } from "./concurrency.js";
 import { downloadFile, fileExists, readJson } from "./fs-utils.js";
-import { ICONS_DIR, MYSTIC_CODES_DIR, SERVANTS_DIR } from "./paths.js";
-import type { NiceMysticCode } from "./types.js";
+import { ICONS_DIR, MYSTIC_CODES_DIR, SERVANTS_DIR, SKILLS_DIR } from "./paths.js";
 
 const ICON_CONCURRENCY = 3;
 const ICON_DELAY_MS = 200;
@@ -20,6 +19,7 @@ const APPEND_ICON_URLS = [
 ].map(filename => `https://static.atlasacademy.io/JP/SkillIcons/${filename}`);
 
 interface WithSkills {
+  icon?: string;
   skills?: Array<{ icon?: string; [key: string]: unknown }>;
 }
 
@@ -46,13 +46,14 @@ async function collectIconUrlsFromDir(
 
       try {
         const data = await readJson<WithSkills>(jsonPath);
+        if (typeof data.icon === "string" && data.icon.length > 0) urlSet.add(data.icon);
         for (const skill of data.skills ?? []) {
           if (typeof skill.icon === "string" && skill.icon.length > 0) {
             urlSet.add(skill.icon);
           }
         }
       } catch (err) {
-        console.warn(`[skill-icons] Failed to read ${jsonPath}:`, err);
+        throw new Error(`[skill-icons] Failed to read ${jsonPath}`, { cause: err });
       }
     }),
   );
@@ -63,13 +64,18 @@ async function collectIconUrlsFromDir(
 export async function collectAllSkillIconUrls(
   servantsDir = SERVANTS_DIR,
   mysticCodesDir = MYSTIC_CODES_DIR,
+  skillsDir = SKILLS_DIR,
 ): Promise<string[]> {
-  const [servantUrls, mysticCodeUrls] = await Promise.all([
+  const groups = await Promise.all([
     collectIconUrlsFromDir(servantsDir, "servant.json"),
+    collectIconUrlsFromDir(servantsDir, "servant-cn.json"),
     collectIconUrlsFromDir(mysticCodesDir, "mystic-code.json"),
+    collectIconUrlsFromDir(mysticCodesDir, "mystic-code-cn.json"),
+    collectIconUrlsFromDir(skillsDir, "skill.json"),
+    collectIconUrlsFromDir(skillsDir, "skill_cn.json"),
   ]);
 
-  const merged = new Set([...APPEND_ICON_URLS, ...servantUrls, ...mysticCodeUrls]);
+  const merged = new Set([...APPEND_ICON_URLS, ...groups.flat()]);
   return Array.from(merged).sort();
 }
 
@@ -109,6 +115,7 @@ async function downloadSkillIcons(): Promise<void> {
   console.log(
     `Skill icons done. downloaded=${downloaded} skipped=${skipped} failed=${failed}`,
   );
+  if (failed > 0) throw new Error(`${failed} skill icon downloads failed`);
 }
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;

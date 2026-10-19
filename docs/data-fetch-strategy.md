@@ -118,6 +118,8 @@ JP 从者的卡面、头像和窄图仍只检查目标文件是否存在：
 
 图片失败不阻止从者 JSON 游标推进；缺失图片会在下一次完整基础列表扫描时重试。
 
+图片失败会让整体下载命令返回失败。CI 更新流程只有全部步骤成功才将数据与 state 一起提交到 private，失败时不会推送 runner 内已推进的游标。
+
 ## 概念礼装
 
 礼装逻辑不使用 Changes：
@@ -153,3 +155,5 @@ JP 从者的卡面、头像和窄图仍只检查目标文件是否存在：
 3. runtime skill 下载、variants 完整度测试和 verification 报告是否完成。
 
 子模块的 `download:skill-icons` 和 `download:mystic-codes` 不在根目录 `npm start` / `data:atlas` 主流程中，命令示例见 [Atlas 数据工具](../mash-atlasacademy/README.md)。
+
+[官方 Mash 数据更新 Action](pipelines.md) 会额外执行这两个命令，为官方数据包自动补齐资源；图标收集包含 JP/CN 从者、魔术礼装和 runtime skill。礼装、魔术礼装及图标下载出现失败时，命令也会返回失败，防止 CI 提交不完整的更新。

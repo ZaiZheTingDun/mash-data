@@ -40,3 +40,23 @@ test("retains all required append icons before servant assets have been download
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("collects CN-only and runtime skill icons for complete pipeline updates", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mash-runtime-icons-"));
+  try {
+    const servants = join(root, "servants");
+    const codes = join(root, "mystic-codes");
+    const skills = join(root, "skills");
+    await mkdir(join(servants, "1"), { recursive: true });
+    await mkdir(join(skills, "2"), { recursive: true });
+    const cnIcon = "https://example.com/cn.png";
+    const runtimeIcon = "https://example.com/runtime.png";
+    await writeFile(join(servants, "1", "servant-cn.json"), JSON.stringify({ skills: [{ icon: cnIcon }] }));
+    await writeFile(join(skills, "2", "skill_cn.json"), JSON.stringify({ icon: runtimeIcon }));
+    const urls = await collectAllSkillIconUrls(servants, codes, skills);
+    assert.ok(urls.includes(cnIcon));
+    assert.ok(urls.includes(runtimeIcon));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
