@@ -2,6 +2,10 @@
 set -euo pipefail
 
 AWS_PROFILE="${AWS_PROFILE-mash}"
+# AWS CLI treats an exported empty value as a profile name, not as "no profile".
+if [[ -z "$AWS_PROFILE" ]]; then
+  unset AWS_PROFILE
+fi
 R2_PREFIX="${R2_PREFIX:-mash}"
 ASSETS_PREFIX="${ASSETS_PREFIX:-assets}"
 CACHE_CONTROL="${CACHE_CONTROL:-public, max-age=300}"

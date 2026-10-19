@@ -9,6 +9,15 @@ from pathlib import Path, PurePosixPath
 from .hashing import sha256_file
 
 
+def aws_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    # Empty means environment credentials in our scripts, but AWS CLI treats it
+    # as a literal profile name even when --profile is omitted.
+    if environment.get("AWS_PROFILE") == "":
+        environment.pop("AWS_PROFILE")
+    return environment
+
+
 def safe_path(value: str) -> str:
     path = PurePosixPath(value)
     if not value or path.is_absolute() or ".." in path.parts or "\\" in value or str(path) != value:
@@ -40,7 +49,7 @@ class R2Store:
         if self.profile:
             command += ["--profile", self.profile]
         command += ["s3api", operation, "--bucket", self.bucket, "--key", object_key, *args, "--output", "json"]
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(command, capture_output=True, text=True, check=False, env=aws_environment())
         if result.returncode:
             if missing_ok and ("(NoSuchKey)" in result.stderr or "(404)" in result.stderr):
                 return None

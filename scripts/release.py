@@ -17,6 +17,7 @@ from assets_release.asset_state import (
 from assets_release.base_builder import BaseBuildError, BaseBuilder
 from assets_release.manifest_builder import ManifestBuildError, ManifestBuilder
 from assets_release.patch_builder import PatchBuildError, PatchBuilder
+from assets_release.r2 import aws_environment
 from assets_release.version_utils import VersionError, parse_version_label
 
 
@@ -83,7 +84,7 @@ def fetch_r2_object(file_path: str, label: str | None = None) -> bytes:
 
     command = ["aws", "s3", "cp", source, "-", *aws_args()]
     try:
-        result = subprocess.run(command, check=True, capture_output=True)
+        result = subprocess.run(command, check=True, capture_output=True, env=aws_environment())
     except FileNotFoundError as error:
         raise RuntimeError("missing required command: aws") from error
     except subprocess.CalledProcessError as error:
