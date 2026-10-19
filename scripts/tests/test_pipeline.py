@@ -17,6 +17,8 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from assets_release.json_utils import to_json_bytes, write_json
+from assets_release.asset_state import scan_asset_entries
+from assets_release.base_builder import BaseBuilder
 from assets_release.r2 import R2Store, safe_path, verify_file
 from pipeline_release import prepare, publish
 from record_data_update import git, record_update, render_summary, resource_counts
@@ -112,6 +114,55 @@ class PipelineTests(unittest.TestCase):
 
     def next_version(self):
         write_json(self.root / "assets" / "skills" / "1" / "data.json", {"id": 2})
+
+    def test_raw_caches_are_excluded_from_all_packages_states_and_publication(self):
+        raw_paths = [
+            "servants/1/servant-raw.json", "servants/1/servant-cn-raw.json",
+            "ces/1/craft-essence-raw.json", "ces/1/craft-essence-cn-raw.json",
+        ]
+        for name in raw_paths:
+            # Invalid JSON also proves release validation never reads private raw.
+            (self.root / "assets" / name).write_text("PRIVATE_RAW_MARKER")
+        self.assertTrue(set(raw_paths).isdisjoint(scan_asset_entries(self.root)))
+        validate_assets(self.root)
+        self.release_base()
+
+        def check_artifacts():
+            BaseBuilder(self.root).build_offline_bundle()
+            for path in (self.root / "dist").rglob("*.zip"):
+                with zipfile.ZipFile(path) as archive:
+                    self.assertTrue(set(raw_paths).isdisjoint(archive.namelist()), path)
+                    for name in archive.namelist():
+                        self.assertNotIn(b"PRIVATE_RAW_MARKER", archive.read(name), (path, name))
+                        if name.endswith(".json"):
+                            self.assertNotIn(b"-raw.json", archive.read(name), (path, name))
+            for path in (self.root / "dist" / "assets-release").rglob("*.json"):
+                self.assertNotIn(b"-raw.json", path.read_bytes(), path)
+
+        check_artifacts()
+        for name in raw_paths:
+            (self.root / "assets" / name).write_text("PRIVATE_RAW_MARKER_CHANGED")
+        self.next_version()
+        prepare(self.root, self.store, "patch")
+        check_artifacts()
+        with zipfile.ZipFile(self.root / "dist" / "assets-release" / "patches" / "v1-to-v2.zip") as archive:
+            self.assertEqual(json.loads(archive.read("deletes.json")), {"files": []})
+        publish(self.root, self.store)
+        self.assertNotIn(b"-raw.json", self.store.objects["states/asset-state-v2.json"])
+
+    def test_validator_requires_compact_ce_fields_and_rejects_legacy_basic(self):
+        path = self.root / "assets" / "ces" / "1" / "craft-essence.json"
+        write_json(path, {"id": 1, "collectionNo": 1})
+        with self.assertRaisesRegex(ValueError, "requires raw migration"):
+            validate_assets(self.root)
+        compact = {"id": 1, "collectionNo": 1, "schemaVersion": 1,
+                   "bondEquipOwner": None, "valentineEquipOwner": None,
+                   "bondBonuses": [], "events": []}
+        write_json(path, compact)
+        validate_assets(self.root)
+        write_json(path, {**compact, "profile": {"private": "lore"}})
+        with self.assertRaisesRegex(ValueError, "compact data only"):
+            validate_assets(self.root)
 
     def test_base_and_patch_preserve_history_and_publish_latest_last(self):
         original = (self.root / "assets" / "manifest.json").read_bytes()
@@ -328,6 +379,8 @@ class PipelineTests(unittest.TestCase):
             ("M", "assets/servants/1/servant_variants_cn.json", "战斗形态 JSON"),
             ("M", "assets/servants_variants.json", "战斗形态 JSON"),
             ("M", "assets/ces/1/craft-essence.json", "概念礼装 JSON"),
+            ("A", "assets/ces/1/craft-essence-raw.json", "概念礼装原始 JSON"),
+            ("M", "assets/ces/1/craft-essence-cn-raw.json", "概念礼装原始 JSON"),
             ("D", "assets/ces/1/card_ce.png", "概念礼装图片"),
             ("A", "assets/skills/2/skill_cn.json", "技能 JSON"),
             ("A", "assets/icons/skill_1.png", "技能图标"),
@@ -336,6 +389,7 @@ class PipelineTests(unittest.TestCase):
             ("M", "assets/craft_essences.json", "资源汇总"),
             ("M", "resources/servants.json", "客户端资源"),
             ("M", "state/atlas-data-version.json", "Atlas 更新游标"),
+            ("M", "state/atlas-ce-data-version.json", "Atlas 更新游标"),
             ("M", "verification/result/runtime-skills.json", "分析报告"),
             ("M", "assets/version.json", "其他状态与配置"),
         ]
@@ -359,6 +413,15 @@ class PipelineTests(unittest.TestCase):
         summary = render_summary(result, "commit", "skipped")
         self.assertIn("更新结果：无变化", summary)
         self.assertIn("| 从者数据 JSON | 0 | 0 | 0 |", summary)
+
+    def test_first_ce_cursor_is_recorded_without_requiring_a_previous_file(self):
+        state = {"JP": {"hash": "ce-version", "timestamp": 1}}
+        write_json(self.root / "state" / "atlas-ce-data-version.json", state)
+        result = record_update(self.root, "5-1", "code", "run")
+        report = json.loads((self.root / result["record"]).read_text())
+        self.assertIsNone(report["atlasCeStateBefore"])
+        self.assertEqual(report["atlasCeStateAfter"], state)
+        self.assertEqual(report["countsByResource"]["Atlas 更新游标"]["A"], 1)
 
     def test_manifest_sync_only_stages_verified_published_manifest_and_can_repeat(self):
         self.release_base()

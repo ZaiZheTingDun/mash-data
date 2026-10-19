@@ -48,6 +48,8 @@ assets/
 │       └── narrow_servant_1.png
 ├── ces/
 │   └── 1/
+│       ├── craft-essence-raw.json       # JP 完整响应，不发布
+│       ├── craft-essence-cn-raw.json    # CN 完整响应，不发布
 │       ├── craft-essence.json
 │       ├── craft-essence-cn.json
 │       └── card_ce.png
@@ -62,7 +64,7 @@ assets/
 
 下载从者详情时使用 `lore=true`，以保留 `profile.costume` 等形态生成所需字段。完整响应保存在 raw 文件中，精简缓存用于后续生成和资源发布；raw 文件不进入资源包。
 
-JP 从者图片取自 `extraAssets.commands`、`faces` 和 `narrowFigure` 下的 `ascension` / `costume`。文件名后缀使用源字段的键：再临编号或灵衣 `battleCharaId`。礼装头像地址中的 `/Faces/` 会替换为 `/EquipFaces/`。CN 流程保存本地化 JSON，复用 JP 图片。
+JP 从者图片取自 `extraAssets.commands`、`faces` 和 `narrowFigure` 下的 `ascension` / `costume`。文件名后缀使用源字段的键：再临编号或灵衣 `battleCharaId`。礼装头像地址中的 `/Faces/` 会替换为 `/EquipFaces/`。CN 流程保存本地化 raw 和精简 JSON，复用 JP 图片。礼装数据格式、牵绊效果与归属字段见 [概念礼装数据](../docs/craft-essences.md)。
 
 ## 命令参考
 
@@ -72,11 +74,11 @@ JP 从者图片取自 `extraAssets.commands`、`faces` 和 `narrowFigure` 下的
 | --- | --- |
 | `start` | 依次下载从者和概念礼装 |
 | `start:servants` | 更新 JP/CN 从者 JSON，补齐 JP 图片 |
-| `start:ces` | 补齐 JP/CN 礼装 JSON 和 JP 图片 |
+| `start:ces` | 增量刷新 JP/CN 礼装 raw，重建精简数据、缓存活动索引并补齐 JP 图片 |
 | `download:runtime-skills` | 递归下载 `script.SkillRankUp` 引用的完整技能数据 |
 | `build:variants` | 根据本地 JP/CN 缓存生成每位从者的静态形态 |
 | `combine:variants` | 汇总形态，并向对应槽位追加运行时技能 |
-| `combine:ces` | 汇总本地礼装数据 |
+| `combine:ces` | 从本地 raw 与活动索引重建精简礼装及汇总 |
 | `compact:servants` | 将旧缓存转换为 raw 与精简文件 |
 | `download:skill-icons` | 单独下载技能图标 |
 | `download:mystic-codes` | 单独下载魔术礼装数据与图片 |
@@ -102,9 +104,9 @@ node mash-atlasacademy/dist/mash-atlasacademy/src/index.js
 ## 更新行为
 
 - 每次获取完整从者与礼装轻量列表。
-- 从者详情根据地区版本与 Changes 增量刷新，缺失或损坏的 JSON 会补齐。
+- 从者与礼装详情使用独立地区游标，根据版本与 Changes 增量刷新，缺失或损坏的 raw 会补齐。
 - JP/CN 游标分别在该地区计划内的从者 JSON 下载成功后推进。
-- 图片与礼装缓存按路径补缺，已有文件跳过。
+- 图片按路径补缺；礼装精简数据每次从 raw 重建。
 - 技能切换依赖每次覆盖下载，形态与汇总基于缓存重新生成。
 
 重跑不会自动清理上游已移除的数据目录，也不会校验或覆盖同路径的已有图片。失败处理和全量刷新条件见 [更新与缓存策略](../docs/data-fetch-strategy.md)。

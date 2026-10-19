@@ -113,7 +113,7 @@ dist/assets-release/
 
 受管理文件为 `assets/` 下 `servants`、`ces`、`icons`、`mystic-codes`、`skills` 目录中的 JSON 和 PNG/WebP/JPG/JPEG 图片。ZIP 内路径相对于 `assets/`，例如 `assets/servants/1/servant.json` 打包为 `servants/1/servant.json`。
 
-`servant-raw.json`、`servant-cn-raw.json` 和 `.DS_Store` 会被排除。`resources/`、分析报告及 `assets/` 根目录的汇总文件也不属于这组打包目录。raw 排除规则同样适用于补丁、离线包和资源状态清单。
+`servant-raw.json`、`servant-cn-raw.json`、`craft-essence-raw.json`、`craft-essence-cn-raw.json` 和 `.DS_Store` 会被排除。`resources/`、分析报告及 `assets/` 根目录的汇总文件也不属于这组打包目录。raw 排除规则同样适用于补丁、离线包和资源状态清单。
 
 `latest.json` 指向最新发布清单，并携带当前资源状态文件的路径、SHA-256 和大小。
 

@@ -16,3 +16,8 @@ export const SERVANTS_VARIANTS_CN_FILE = join(
 );
 export const SKILLS_DIR = join(ASSETS_ROOT, "skills");
 export const DATA_VERSION_FILE = join(dataRoot, "state", "atlas-data-version.json");
+export const CE_DATA_VERSION_FILE = join(dataRoot, "state", "atlas-ce-data-version.json");
+export const EVENT_INDEX_FILES = {
+  JP: join(dataRoot, "state", "atlas-events-jp.json"),
+  CN: join(dataRoot, "state", "atlas-events-cn.json"),
+};

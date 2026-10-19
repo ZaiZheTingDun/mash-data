@@ -64,6 +64,24 @@ export interface BasicEquip {
   [key: string]: unknown;
 }
 
+export interface NiceEquip {
+  id: number;
+  collectionNo: number;
+  name: string;
+  rarity: number;
+  extraAssets: Record<string, Record<string, Record<string, string>>>;
+  skills: Array<Record<string, unknown>>;
+  bondEquipOwner?: number | null;
+  valentineEquipOwner?: number | null;
+  [key: string]: unknown;
+}
+
+export interface BasicEvent {
+  id: number;
+  name: string;
+  [key: string]: unknown;
+}
+
 export interface NiceMysticCodeAssetItem {
   male?: string;
   female?: string;

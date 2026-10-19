@@ -3,6 +3,8 @@ import type {
   BasicServant,
   AtlasDataVersions,
   NiceServant,
+  NiceEquip,
+  BasicEvent,
   Region,
 } from "./types.js";
 
@@ -57,12 +59,16 @@ export async function fetchBasicCraftEssences(
 export async function fetchCraftEssence(
   region: Region,
   craftEssenceId: number,
-): Promise<BasicEquip> {
-  const url = `${API_BASE}/basic/${region}/equip/${craftEssenceId}`;
-  return fetchJson<BasicEquip>(
+): Promise<NiceEquip> {
+  const url = `${API_BASE}/nice/${region}/equip/${craftEssenceId}?lore=true`;
+  return fetchJson<NiceEquip>(
     url,
     `${region} craft essence ${craftEssenceId}`,
   );
+}
+
+export async function fetchBasicEvents(region: Region): Promise<BasicEvent[]> {
+  return fetchJson<BasicEvent[]>(`${API_BASE}/export/${region}/basic_event.json`, `${region} basic event list`);
 }
 
 async function fetchJson<T>(url: string, label: string): Promise<T> {

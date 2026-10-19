@@ -11,8 +11,8 @@
 当前流程按数据类型分别处理：
 
 1. 从者和概念礼装的轻量基础列表每次全量获取。
-2. 从者详情通过 Atlas 数据版本和 Changes 日志增量刷新；本地缺失或损坏的详情也会补齐。
-3. 从者图片和概念礼装仍按文件存在性补缺，不覆盖已有图片。
+2. 从者与礼装详情使用独立游标，通过 Atlas 数据版本和 Changes 日志增量刷新；本地缺失或损坏的 raw 也会补齐。
+3. 从者与礼装图片按文件存在性补缺，不覆盖已有图片。
 4. runtime skill 对当前发现的依赖集合每次重新下载并覆盖。
 5. variants、汇总文件、验证报告和 `resources/` 每次基于本地缓存完整重建。
 
@@ -21,8 +21,10 @@
 | JP/CN 从者基础列表 | 每次获取完整 `basic_servant.json` | 用于确定当前 collection servant | 不单独落盘 |
 | JP/CN 从者详情 | 读取 `/info`，版本变化时读取 Changes | Changes 关联、本地缺失、raw 缺失或 JSON 损坏 | 完整响应写入 raw，另生成精简缓存 JSON |
 | JP 从者图片 | 根据从者详情逐项处理 | 检查目标路径 | 已存在则跳过 |
-| JP/CN 礼装基础列表 | 每次获取完整 `basic_equip.json` | 遍历全部有效 `collectionNo` | 用于补齐本地文件 |
-| JP/CN 礼装 JSON、JP 图片 | 按基础列表逐项处理 | 检查目标路径 | 已存在则跳过 |
+| JP/CN 礼装基础列表 | 每次获取完整 `basic_equip.json` | 遍历全部有效 `collectionNo` | 不单独落盘 |
+| JP/CN 礼装详情 | `/info` 与 Changes；详情使用 `nice/equip?lore=true` | 礼装/技能/函数/Buff 变化、raw 缺失或损坏 | 写入 raw，每次重建精简 JSON |
+| JP/CN 活动索引 | 每次获取 `basic_event.json` | 校验 ID 与名称 | 缓存至 `state/atlas-events-jp.json`、`atlas-events-cn.json` |
+| JP 礼装图片 | 根据精简礼装的 `face` | 检查目标路径 | 已存在则跳过 |
 | runtime skill | 请求全部已发现的依赖 ID | 不用已有技能文件跳过请求 | 每次覆盖 |
 | variants、汇总和验证结果 | 不请求网络 | 扫描当前本地缓存 | 每次覆盖输出 |
 
@@ -33,7 +35,7 @@
 ```text
 data:atlas
   ├─ 增量刷新从者、补齐从者图片
-  ├─ 增量补齐概念礼装
+  ├─ 增量刷新概念礼装 raw、重建精简数据并补齐图片
   ├─ 覆盖下载 runtime skill 依赖
   ├─ 全量重建并汇总 JP/CN variants
   ├─ 运行完整度测试并生成 verification 报告
@@ -122,14 +124,16 @@ JP 从者的卡面、头像和窄图仍只检查目标文件是否存在：
 
 ## 概念礼装
 
-礼装逻辑不使用 Changes：
+礼装与从者采用相同的数据分层，使用独立的 `state/atlas-ce-data-version.json` 保存 JP/CN 游标。首次迁移时重新获取完整 `nice/{region}/equip/{collectionNo}?lore=true`，已有 basic JSON 不会被当作 raw。
 
-- JP/CN 每次获取完整 `basic_equip.json`。
-- JP 的 `craft-essence.json` 和 `card_ce.png` 只在缺失时写入或下载。
-- CN 的 `craft-essence-cn.json` 只在缺失时写入。
-- 已有礼装 JSON 和图片不覆盖。
+- 完整响应保存为 `craft-essence-raw.json` / `craft-essence-cn-raw.json`，仅保存在 private，不参与发布。
+- 每次运行都从 raw 生成 `craft-essence.json` / `craft-essence-cn.json`；精简文件缺失或格式升级不需要重新下载有效 raw。
+- Changes 的 `ce` 项，以及命中礼装内部 ID 的 `svt` 项，触发直接刷新。技能、函数、Buff 反向依赖从完整 raw 建立，命中时刷新相关礼装。
+- 游标缺失、本地版本不在历史中或版本回退时全量刷新；目标版本尚未进入 Changes 时失败等待重试。
+- 该地区所有礼装生成、JP 图片补缺和活动索引写入成功后才推进游标。任何失败会让整体命令失败，保留该地区旧游标。
+- JP 图片仍然只补缺，不覆盖已有图片。
 
-因此礼装属于“每次获取完整轻量索引、按本地路径增量补齐”。
+`combine:ces` 从 raw 和本地活动索引重新生成精简文件与汇总，不访问网络。缺少 raw 的旧 basic 缓存会报错，避免汇总时静默丢失关联字段。字段和迁移命令见 [概念礼装数据](craft-essences.md)。
 
 ## runtime skill 与本地生成
 

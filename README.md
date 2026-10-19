@@ -8,7 +8,7 @@
 
 ## 功能
 
-- 根据 Atlas 数据版本和 Changes 日志更新从者详情，补齐缺失图片与概念礼装。
+- 根据 Atlas 数据版本和 Changes 日志更新从者与概念礼装详情，保存 raw、生成精简数据并补齐缺失图片。
 - 生成 JP/CN 从者战斗形态，收集技能切换依赖，汇总客户端所需 JSON。
 - 检查形态技能的来源与元数据，生成目标选择、选项选择等分析报告。
 - 构建基础资源包、增量补丁和离线导入包，并通过现有脚本上传至 Cloudflare R2。
@@ -94,7 +94,7 @@ $env:MASH_DATA_ROOT = 'C:\path\to\mash-data-private'
 
 完整流程面向已有完整数据目录的维护者，需要缓存、原始 JSON 和资源等输入。仅创建空 `assets/` 不足以运行所有步骤。本仓库不附带完整生产数据集；可先运行独立下载命令，了解其输出，参见 [Atlas 数据工具](mash-atlasacademy/README.md)。
 
-从旧目录迁移时，将原 `mash-atlasacademy/data-version.json` 保留内容移到数据目录的 `state/atlas-data-version.json`。程序只读取新位置；缺少有效游标时会重新刷新对应地区的从者 JSON。
+从旧目录迁移时，将原 `mash-atlasacademy/data-version.json` 保留内容移到数据目录的 `state/atlas-data-version.json`。程序只读取新位置；缺少有效游标时会重新刷新对应地区的从者 JSON。礼装使用独立的 `state/atlas-ce-data-version.json`；旧 basic 礼装缓存将在首次运行 `start:ces` 时重新获取为完整 raw，详见 [概念礼装数据](docs/craft-essences.md)。
 
 ## 日常使用
 
