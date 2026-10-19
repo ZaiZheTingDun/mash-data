@@ -41,6 +41,7 @@ async function downloadCraftEssencesWithAssets(): Promise<void> {
   console.log(
     `JP CEs done. downloaded=${downloaded} skipped=${skipped} failed=${failed}`,
   );
+  if (failed > 0) throw new Error(`${failed} JP craft essence downloads failed`);
 }
 
 async function downloadCraftEssencesJsonOnly(
@@ -71,6 +72,7 @@ async function downloadCraftEssencesJsonOnly(
   console.log(
     `${region} CE JSON done. downloaded=${downloaded} skipped=${skipped} failed=${failed}`,
   );
+  if (failed > 0) throw new Error(`${failed} ${region} craft essence downloads failed`);
 }
 
 async function fetchCraftEssences(region: Region) {

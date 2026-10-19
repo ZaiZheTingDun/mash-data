@@ -121,6 +121,7 @@ async function downloadAllMysticCodes(): Promise<void> {
   console.log(
     `JP mystic codes done. downloaded=${downloaded} skipped=${skipped} failed=${failed}`,
   );
+  if (failed > 0) throw new Error(`${failed} JP mystic code downloads failed`);
 
   const cnCodes = await fetchAllMysticCodes("CN");
   console.log(`Found ${cnCodes.length} CN mystic codes.`);
@@ -143,6 +144,7 @@ async function downloadAllMysticCodes(): Promise<void> {
   console.log(
     `CN mystic codes done. downloaded=${downloaded} skipped=${skipped} failed=${failed}`,
   );
+  if (failed > 0) throw new Error(`${failed} CN mystic code downloads failed`);
 }
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;

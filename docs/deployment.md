@@ -1,6 +1,8 @@
 # 资源构建与部署
 
-本文介绍现有 Python 资源构建工具和 Bash 上传脚本。所有命令从**代码仓库根目录**执行；文中 `assets/`、`dist/` 均位于 `MASH_DATA_ROOT` 指定的数据目录中。
+**官方 Mash 数据包通过本仓库的 GitHub Actions 自动构建和发布**：更新 Action 维护官方 private 仓库中的数据与 state，发布 Action 基于其最新提交校验、打包并上传官方 R2。维护流程及发布环境配置见 [官方 Mash 数据包构建与发布](pipelines.md)。两条 Action 目前均由维护者手动触发，后续步骤自动执行。
+
+本文介绍底层 Python 资源构建工具和 Bash 上传脚本，供本地构建、调试和手动操作时参考。所有命令从**代码仓库根目录**执行；文中 `assets/`、`dist/` 均位于 `MASH_DATA_ROOT` 指定的数据目录中。以下手动命令保留原有行为；官方发布 Action 使用 `pipeline_release.py` 执行条件写入、回读校验和最后切换 latest。
 
 [返回项目首页](../README.md) · [数据获取与缓存](data-fetch-strategy.md)
 

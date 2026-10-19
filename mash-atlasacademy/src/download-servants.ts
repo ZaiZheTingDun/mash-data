@@ -114,6 +114,9 @@ export async function downloadAllServants(
       localVersions[region] = targetVersion;
       await dependencies.writeVersions(localVersions, dataVersionFile);
       logRegionSummary(summary);
+      if (summary.imagesFailed > 0) {
+        failures.push(`${region}: ${summary.imagesFailed} servant image downloads failed`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failures.push(`${region}: ${message}`);

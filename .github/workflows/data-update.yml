@@ -1,0 +1,105 @@
+name: Update private data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Both workflows serialize access to the private branch and release destination.
+concurrency:
+  group: mash-data-pipeline
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: data-update
+    timeout-minutes: 120
+    env:
+      PRIVATE_DATA_BRANCH: ${{ vars.PRIVATE_DATA_BRANCH || 'main' }}
+    steps:
+      - name: Check private repository configuration
+        env:
+          PRIVATE_DATA_REPOSITORY: ${{ vars.PRIVATE_DATA_REPOSITORY }}
+        run: |
+          if [[ -z "$PRIVATE_DATA_REPOSITORY" ]]; then
+            echo '::error::PRIVATE_DATA_REPOSITORY is required (owner/repo)'
+            exit 1
+          fi
+
+      - name: Check out tools
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install tool dependencies
+        run: |
+          npm install --global pnpm@12.4.1
+          pnpm install --frozen-lockfile
+          npm --prefix mash-atlasacademy ci
+          python -m pip install -r scripts/requirements-pipeline.txt
+
+      - name: Check tools with test fixtures
+        run: |
+          npm run typecheck:scripts
+          npm --prefix mash-atlasacademy run typecheck
+          npm --prefix verification run typecheck
+          npm --prefix mash-atlasacademy test
+          npm run verify:resources
+          python -m unittest discover -s scripts/tests -v
+
+      - name: Check out private data branch
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.PRIVATE_DATA_REPOSITORY }}
+          ref: ${{ env.PRIVATE_DATA_BRANCH }}
+          token: ${{ secrets.PRIVATE_DATA_WRITE_TOKEN }}
+          path: private-data
+          persist-credentials: true
+          fetch-depth: 1
+
+      - name: Update Atlas data and generated resources
+        env:
+          MASH_DATA_ROOT: ${{ github.workspace }}/private-data
+        run: |
+          npm --prefix mash-atlasacademy run download:mystic-codes
+          npm start
+          npm --prefix mash-atlasacademy run download:skill-icons
+          npm run verification:generate
+          python scripts/validate_assets.py
+
+      - name: Record staged changes in private
+        id: changes
+        env:
+          MASH_DATA_ROOT: ${{ github.workspace }}/private-data
+        run: python scripts/record_data_update.py
+
+      - name: Commit and push successful update
+        if: steps.changes.outputs.changed == 'true'
+        working-directory: private-data
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -c core.hooksPath=/dev/null commit --quiet -m "chore(data): update Atlas data (run ${GITHUB_RUN_ID})"
+          git -c core.hooksPath=/dev/null push origin "HEAD:refs/heads/${PRIVATE_DATA_BRANCH}"
+
+      - name: Summarize update
+        env:
+          CHANGED: ${{ steps.changes.outputs.changed }}
+          FILES: ${{ steps.changes.outputs.files }}
+        run: |
+          python - <<'PY'
+          import os, subprocess
+          commit = subprocess.check_output(['git', '-C', 'private-data', 'rev-parse', 'HEAD'], text=True).strip()
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write(f"Updated: {os.environ['CHANGED']}\n\nChanged data files: {os.environ['FILES']}\n\nPrivate commit: `{commit}`\n")
+          PY
