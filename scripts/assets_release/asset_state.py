@@ -10,7 +10,10 @@ IMAGE_EXTENSIONS = (".png", ".webp", ".jpg", ".jpeg")
 ASSET_ROOTS = ("servants", "ces", "icons", "mystic-codes", "skills")
 ASSET_EXTENSIONS = (".json", *IMAGE_EXTENSIONS)
 IGNORED_ASSET_NAMES = {".DS_Store"}
-RAW_SERVANT_JSON_NAMES = {"servant-raw.json", "servant-cn-raw.json"}
+RAW_JSON_NAMES = {
+    "servant-raw.json", "servant-cn-raw.json",
+    "craft-essence-raw.json", "craft-essence-cn-raw.json",
+}
 
 
 class AssetStateError(RuntimeError):
@@ -95,7 +98,7 @@ def is_asset_path(asset_path: str) -> bool:
         len(path.parts) >= 2
         and path.parts[0] in ASSET_ROOTS
         and path.name not in IGNORED_ASSET_NAMES
-        and path.name not in RAW_SERVANT_JSON_NAMES
+        and path.name not in RAW_JSON_NAMES
         and path.suffix.lower() in ASSET_EXTENSIONS
     )
 

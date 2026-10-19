@@ -5,11 +5,11 @@ import {
   ensureDir,
   fileExists,
   readJson,
-  writeJson,
   writeJsonAtomic,
 } from "./fs-utils.js";
-import { CES_DIR, SERVANTS_DIR } from "./paths.js";
+import { SERVANTS_DIR } from "./paths.js";
 import { compactServant } from "./compact-servant.js";
+import { downloadCraftEssenceImages, loadOrFetchCraftEssence } from "./ce-cache.js";
 import type {
   BasicEquip,
   NiceServant,
@@ -257,71 +257,24 @@ async function downloadAssetMap(
 export async function downloadCraftEssenceAssets(
   craftEssenceId: number,
 ): Promise<"downloaded" | "skipped"> {
-  const label = `ce ${craftEssenceId}`;
-  console.log(`[${label}] Fetching craft essence data...`);
-  const data = await fetchCraftEssence("JP", craftEssenceId);
-  return writeCraftEssenceAssets(data);
+  const raw = await fetchCraftEssence("JP", craftEssenceId);
+  const { refreshed } = await loadOrFetchCraftEssence("JP", raw.collectionNo, { fetcher: async () => raw, expectedId: raw.id });
+  const images = await downloadCraftEssenceImages(raw.collectionNo);
+  return refreshed || images > 0 ? "downloaded" : "skipped";
 }
 
 export async function writeCraftEssenceAssets(
   data: BasicEquip,
 ): Promise<"downloaded" | "skipped"> {
-  const label = `ce ${data.collectionNo}`;
-  const ceDir = join(CES_DIR, String(data.collectionNo));
-  const jsonPath = join(ceDir, "craft-essence.json");
-  const imagePath = join(ceDir, "card_ce.png");
-  const imageUrl = toEquipFaceUrl(data.face);
-
-  const jsonExists = await fileExists(jsonPath);
-  const imageExists = imageUrl ? await fileExists(imagePath) : true;
-
-  if (jsonExists && imageExists) {
-    return "skipped";
-  }
-
-  await ensureDir(ceDir);
-
-  if (!jsonExists) {
-    await writeJson(jsonPath, data);
-    console.log(`[${label}] Wrote ${jsonPath}`);
-  }
-
-  if (!imageUrl) {
-    console.warn(`[${label}] No face URL available, skipping image.`);
-    return jsonExists ? "skipped" : "downloaded";
-  }
-
-  if (!imageExists) {
-    await downloadFile(imageUrl, imagePath);
-    console.log(`[${label}] Downloaded face -> ${imagePath}`);
-  }
-
-  return "downloaded";
+  const { refreshed } = await loadOrFetchCraftEssence("JP", data.collectionNo, { expectedId: data.id });
+  const images = await downloadCraftEssenceImages(data.collectionNo);
+  return refreshed || images > 0 ? "downloaded" : "skipped";
 }
 
 export async function writeCraftEssenceJson(
   region: Region,
   data: BasicEquip,
 ): Promise<"downloaded" | "skipped"> {
-  const label = `${region} ce ${data.collectionNo}`;
-  const ceDir = join(CES_DIR, String(data.collectionNo));
-  const jsonPath = join(
-    ceDir,
-    region === "JP"
-      ? "craft-essence.json"
-      : `craft-essence-${region.toLowerCase()}.json`,
-  );
-
-  if (await fileExists(jsonPath)) {
-    return "skipped";
-  }
-
-  await writeJson(jsonPath, data);
-  console.log(`[${label}] Wrote ${jsonPath}`);
-  return "downloaded";
-}
-
-function toEquipFaceUrl(faceUrl: string | undefined): string | undefined {
-  if (!faceUrl) return undefined;
-  return faceUrl.replace("/Faces/", "/EquipFaces/");
+  const { refreshed } = await loadOrFetchCraftEssence(region, data.collectionNo, { expectedId: data.id });
+  return refreshed ? "downloaded" : "skipped";
 }

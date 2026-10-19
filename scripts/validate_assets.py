@@ -54,8 +54,21 @@ def validate_assets(root: Path) -> int:
                     for key, url in (group.get(section) or {}).items():
                         if url:
                             require_image(path.parent / f"{prefix}_{key}.png")
-        elif path.name == "craft-essence.json" and payload.get("face"):
-            require_image(path.parent / "card_ce.png")
+        elif path.name in {"craft-essence.json", "craft-essence-cn.json"}:
+            required = {"bondEquipOwner", "valentineEquipOwner", "bondBonuses", "events"}
+            if payload.get("schemaVersion") != 1 or not required.issubset(payload):
+                raise ValueError(f"craft essence requires raw migration: {entry.path}")
+            if "skills" in payload or "profile" in payload:
+                raise ValueError(f"craft essence must contain compact data only: {entry.path}")
+            for key in ("bondBonuses", "events"):
+                if not isinstance(payload[key], list):
+                    raise ValueError(f"invalid craft essence {key}: {entry.path}")
+            for key in ("bondEquipOwner", "valentineEquipOwner"):
+                owner = payload[key]
+                if owner is not None and (type(owner) is not int or owner <= 0):
+                    raise ValueError(f"invalid craft essence {key}: {entry.path}")
+            if path.name == "craft-essence.json" and payload.get("face"):
+                require_image(path.parent / "card_ce.png")
         elif path.name == "mystic-code.json":
             for group, prefix in (("item", "item"), ("masterFace", "master-face"), ("masterFigure", "master-figure")):
                 for gender in ("male", "female"):

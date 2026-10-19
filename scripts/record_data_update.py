@@ -15,7 +15,7 @@ from assets_release.json_utils import read_json, utc_timestamp, write_json
 
 RESOURCE_TYPES = (
     "从者数据 JSON", "从者原始 JSON", "从者图片", "战斗形态 JSON",
-    "概念礼装 JSON", "概念礼装图片", "技能 JSON", "技能图标",
+    "概念礼装 JSON", "概念礼装原始 JSON", "概念礼装图片", "技能 JSON", "技能图标",
     "魔术礼装 JSON", "魔术礼装图片", "资源汇总", "客户端资源",
     "Atlas 更新游标", "分析报告", "其他状态与配置",
 )
@@ -29,6 +29,8 @@ def resource_type(value: str) -> str:
         if path.name in {"servant-raw.json", "servant-cn-raw.json"}:
             return "从者原始 JSON"
         return "从者数据 JSON" if path.suffix == ".json" else "从者图片"
+    if value.startswith("assets/ces/") and path.name in {"craft-essence-raw.json", "craft-essence-cn-raw.json"}:
+        return "概念礼装原始 JSON"
     for directory, data_label, image_label in (
         ("ces", "概念礼装 JSON", "概念礼装图片"),
         ("mystic-codes", "魔术礼装 JSON", "魔术礼装图片"),
@@ -43,7 +45,7 @@ def resource_type(value: str) -> str:
         return "资源汇总"
     if value.startswith("resources/"):
         return "客户端资源"
-    if value == "state/atlas-data-version.json":
+    if value in {"state/atlas-data-version.json", "state/atlas-ce-data-version.json"}:
         return "Atlas 更新游标"
     if value.startswith("verification/result/"):
         return "分析报告"
@@ -81,6 +83,12 @@ def record_update(root: Path, run_id: str, code_commit: str, run_url: str) -> di
     state_path = "state/atlas-data-version.json"
     before_state = json.loads(git(root, "show", f"HEAD:{state_path}"))
     after_state = json.loads((root / state_path).read_text(encoding="utf-8"))
+    ce_state_path = "state/atlas-ce-data-version.json"
+    before_ce_state = (
+        json.loads(git(root, "show", f"HEAD:{ce_state_path}"))
+        if git(root, "ls-tree", "--name-only", "HEAD", "--", ce_state_path).strip() else None
+    )
+    after_ce_state = read_json(root / ce_state_path) if (root / ce_state_path).exists() else None
     # Only generated data belongs in this commit; never stage code or credentials.
     git(root, "add", "--all", "--", "assets", "resources", "state", "verification/result")
     fields = git(root, "diff", "--cached", "--no-renames", "--name-status", "-z").split("\0")
@@ -100,6 +108,8 @@ def record_update(root: Path, run_id: str, code_commit: str, run_url: str) -> di
         "previousDataCommit": before_commit,
         "atlasStateBefore": before_state,
         "atlasStateAfter": after_state,
+        "atlasCeStateBefore": before_ce_state,
+        "atlasCeStateAfter": after_ce_state,
         "counts": counts,
         "countsByResource": by_resource,
         "files": changes,
