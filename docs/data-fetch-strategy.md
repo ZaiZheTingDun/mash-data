@@ -1,0 +1,155 @@
+# 数据获取与缓存策略
+
+本文说明 `mash-data` 从 Atlas Academy 拉取 JP/CN 数据时，哪些步骤会获取完整索引、哪些文件会按版本刷新，以及哪些结果只在本地重新生成。
+
+[返回项目首页](../README.md) · [Atlas 数据工具](../mash-atlasacademy/README.md)
+
+本文中的数据路径均相对于 `MASH_DATA_ROOT`，命令从代码仓库根目录执行。运行真实数据流程前，先按首页准备数据目录和依赖。
+
+## 更新范围
+
+当前流程按数据类型分别处理：
+
+1. 从者和概念礼装的轻量基础列表每次全量获取。
+2. 从者详情通过 Atlas 数据版本和 Changes 日志增量刷新；本地缺失或损坏的详情也会补齐。
+3. 从者图片和概念礼装仍按文件存在性补缺，不覆盖已有图片。
+4. runtime skill 对当前发现的依赖集合每次重新下载并覆盖。
+5. variants、汇总文件、验证报告和 `resources/` 每次基于本地缓存完整重建。
+
+| 数据 | 远端请求 | 本地判断 | 已有文件处理 |
+| --- | --- | --- | --- |
+| JP/CN 从者基础列表 | 每次获取完整 `basic_servant.json` | 用于确定当前 collection servant | 不单独落盘 |
+| JP/CN 从者详情 | 读取 `/info`，版本变化时读取 Changes | Changes 关联、本地缺失、raw 缺失或 JSON 损坏 | 完整响应写入 raw，另生成精简缓存 JSON |
+| JP 从者图片 | 根据从者详情逐项处理 | 检查目标路径 | 已存在则跳过 |
+| JP/CN 礼装基础列表 | 每次获取完整 `basic_equip.json` | 遍历全部有效 `collectionNo` | 用于补齐本地文件 |
+| JP/CN 礼装 JSON、JP 图片 | 按基础列表逐项处理 | 检查目标路径 | 已存在则跳过 |
+| runtime skill | 请求全部已发现的依赖 ID | 不用已有技能文件跳过请求 | 每次覆盖 |
+| variants、汇总和验证结果 | 不请求网络 | 扫描当前本地缓存 | 每次覆盖输出 |
+
+## 主流程
+
+仓库根目录的 `npm start` 依次执行：
+
+```text
+data:atlas
+  ├─ 增量刷新从者、补齐从者图片
+  ├─ 增量补齐概念礼装
+  ├─ 覆盖下载 runtime skill 依赖
+  ├─ 全量重建并汇总 JP/CN variants
+  ├─ 运行完整度测试并生成 verification 报告
+  └─ 全量重建概念礼装汇总
+
+resources:sync
+  ├─ 重新生成 resources/servants.json
+  └─ 复制 variants 和概念礼装汇总到 resources/
+```
+
+`resources:sync` 根据 `assets/` 中的缓存生成和复制资源，再生成形态技能目标差异报告，不访问 Atlas Academy。完整报告会读取已有 `resources/servants_variants.json`，因此 `data:atlas` 面向已有完整数据目录；各步骤输入见 [数据检查与分析报告](../verification/README.md)。
+
+## 从者版本游标
+
+JP 和 CN 的当前本地版本记录在：
+
+```text
+$MASH_DATA_ROOT/state/atlas-data-version.json
+```
+
+每个地区保存 Atlas `/info` 返回的 `hash` 和 `timestamp`。hash 是增量判断依据；timestamp 只用于记录和日志。
+
+每个地区独立处理和推进游标：
+
+1. 获取完整 `basic_servant.json` 和 `/info` 中的目标版本。
+2. 检查基础列表对应的本地从者 JSON 是否存在、可解析且含有 `profile`。
+3. 本地 hash 等于目标 hash 时不请求 Changes，只补齐缺失或损坏的 JSON。
+4. hash 不同时下载该地区的 Changes JSONL，并只读取“本地 hash 之后、目标 hash 之前（含目标）”的记录。
+5. 计算受影响的 collection servant，覆盖下载其 `nice/{region}/servant/{collectionNo}?lore=true`，完整响应写入 `*-raw.json`，再生成只含项目使用字段的缓存文件。
+6. 该地区所有计划内 JSON 下载成功后，原子写入新 hash；失败时保留旧 hash。
+
+JP 成功而 CN 失败时，只推进 JP。游标表示源从者 JSON 已更新到的版本；后续 variants 或报告生成失败不会回退游标，因为再次运行仍会从已经更新的 JSON 重新生成。
+
+### Changes 如何关联从者
+
+Changes 中的 `svt` 项带有 `collectionNo`，可以直接关联从者。但 Atlas 也会出现 `svt` 为空、只有 skill/NP/function/buff 变化的版本，因此不能只读取 `changes.svt`。
+
+程序会从本地有效的精简从者 JSON 建立反向索引，覆盖：
+
+- `skills`
+- `noblePhantasms`
+- 上述技能和宝具的 functions/buffs
+
+Changes 中的 skill、NP、function 或 buff ID 命中索引时，对应从者也会进入刷新集合。无法关联到当前 collection servant 的敌方或活动实体只计入日志，不触发全量刷新，也不会调用 Atlas reverse API。
+
+### 从者缓存精简
+
+Atlas 的 `nice/servant?lore=true` 响应包含完整剧情、战斗效果和养成数据，每个地区分别保存两份：
+
+- `servant-raw.json` / `servant-cn-raw.json`：未经裁剪的 Atlas 原始响应，仅作本地数据保留；
+- `servant.json` / `servant-cn.json`：供生成、验证和资源发布使用的精简数据。
+
+精简文件保留以下可消费字段：
+
+- 从者的标识、名称、职阶、稀有度和基础分类；
+- 卡面/头像/窄图和灵基图的 URL，以及灵衣对应关系；
+- 技能、宝具的 ID、名称、图标、变体解锁条件、必要的目标类型/选择信息与增量更新依赖 ID；
+- 宝具及从者名称覆写和 `SkillRankUp` 关系。
+
+`classPassive`、`extraPassive` 和 `appendPassive` 不进入精简文件。对尚未转换的旧缓存运行 `npm run atlas:compact-servants`，会先保留为 raw，再生成精简文件。若 raw 已缺失，下一次 `npm start` 会重新请求对应 Atlas 数据补齐。
+
+raw 文件不会进入基础资源包、增量补丁或资源状态清单。
+
+### 全量回退
+
+以下情况无法安全计算增量区间，会对该地区的从者 JSON 做一次全量刷新：
+
+- `state/atlas-data-version.json` 不存在、无法解析或缺少该地区版本。
+- 本地 hash 不在 Changes 日志中。
+- 本地版本位于目标版本之后，说明版本发生回退或历史被改写。
+
+如果 `/info` 的目标 hash 尚未出现在 Changes 日志中，程序直接失败并等待重试，不推进游标。这样可以避免在两个 Atlas 资源尚未同步时漏过区间。
+
+## 从者图片
+
+JP 从者的卡面、头像和窄图仍只检查目标文件是否存在：
+
+- 新路径不存在：下载，例如新增灵衣产生的新文件。
+- 路径已存在：跳过，即使该从者 JSON 因版本变化被覆盖。
+
+当前不比较图片哈希、修改时间、HTTP ETag 或 URL，也不强制覆盖同路径图片。CN 流程只保存从者 JSON，不下载单独的 CN 图片。
+
+图片失败不阻止从者 JSON 游标推进；缺失图片会在下一次完整基础列表扫描时重试。
+
+## 概念礼装
+
+礼装逻辑不使用 Changes：
+
+- JP/CN 每次获取完整 `basic_equip.json`。
+- JP 的 `craft-essence.json` 和 `card_ce.png` 只在缺失时写入或下载。
+- CN 的 `craft-essence-cn.json` 只在缺失时写入。
+- 已有礼装 JSON 和图片不覆盖。
+
+因此礼装属于“每次获取完整轻量索引、按本地路径增量补齐”。
+
+## runtime skill 与本地生成
+
+`atlas:download-runtime-skills` 每次扫描本地 JP/CN 从者 JSON，递归收集 `script.SkillRankUp`，并覆盖写入：
+
+- `assets/skills/{skillId}/skill.json`
+- `assets/skills/{skillId}/skill_cn.json`
+
+随后 variants、概念礼装汇总、verification 报告和 `resources/` 都从当前本地缓存全量重建。这些步骤不代表重新从 Atlas 下载所有源数据。
+
+## 缓存清理与失败检查
+
+当前不会自动删除本地目录：
+
+- Atlas 当前基础列表中已经不存在的从者或礼装不会自动移除。
+- 不再被从者引用的 runtime skill 目录不会自动移除。
+- 汇总生成器仍可能扫描到有效的旧目录。
+
+更新时应检查：
+
+1. JP/CN 从者日志中的 `failed` 是否为 `0`，以及 hash 是否成功推进。
+2. 图片和礼装下载阶段的失败计数。
+3. runtime skill 下载、variants 完整度测试和 verification 报告是否完成。
+
+子模块的 `download:skill-icons` 和 `download:mystic-codes` 不在根目录 `npm start` / `data:atlas` 主流程中，命令示例见 [Atlas 数据工具](../mash-atlasacademy/README.md)。

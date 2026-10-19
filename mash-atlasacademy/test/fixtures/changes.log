@@ -1,0 +1,4 @@
+{"commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","timestamp":100,"changes":{"svt":[],"ce":[],"skill":[],"buff":[],"np":[],"func":[]}}
+{"commit":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","timestamp":200,"changes":{"svt":[{"id":100100,"collectionNo":1},{"id":9900000,"collectionNo":0}],"ce":[],"skill":[{"id":100},{"id":999}],"buff":[{"id":400}],"np":[{"id":200}],"func":[{"id":300}]}}
+{"commit":"cccccccccccccccccccccccccccccccccccccccc","timestamp":300,"changes":{"svt":[],"ce":[],"skill":[{"id":101},{"id":102},{"id":103}],"buff":[{"id":401}],"np":[],"func":[{"id":301}]}}
+{"commit":"dddddddddddddddddddddddddddddddddddddddd","timestamp":400,"changes":{"svt":[{"id":200200,"collectionNo":99}],"ce":[],"skill":[],"buff":[],"np":[],"func":[]}}

@@ -1,0 +1,21 @@
+{
+  "name": "verification",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verify:target-selection-skills": "node --import tsx src/verify-target-selection-skills.ts",
+    "verify:choice-selection-skills": "node --import tsx src/verify-choice-selection-skills.ts",
+    "verify:runtime-skills": "node --import tsx src/verify-runtime-skills.ts",
+    "verify:variant-skill-target-types": "node --import tsx src/verify-variant-skill-target-types.ts",
+    "test:generate-servants": "node --import tsx --test test/generate-servants.test.ts",
+    "test:servant-variants": "node --import tsx --test test/servant-variants.test.ts",
+    "verify:all": "node --import tsx src/verify-all.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

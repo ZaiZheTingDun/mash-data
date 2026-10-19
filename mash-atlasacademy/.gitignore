@@ -1,0 +1,6 @@
+node_modules/
+output/
+dist/
+*.log
+!test/fixtures/changes.log
+.DS_Store

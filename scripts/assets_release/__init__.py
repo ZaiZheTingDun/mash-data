@@ -1,0 +1,1 @@
+"""Assets release builder package."""

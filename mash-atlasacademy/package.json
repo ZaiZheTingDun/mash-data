@@ -1,0 +1,30 @@
+{
+  "name": "mash-atlasacademy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Loader for Atlas Academy nice servant data and assets",
+  "type": "module",
+  "scripts": {
+    "start": "node --import tsx src/index.ts",
+    "start:servants": "node --import tsx src/download-servants.ts",
+    "start:ces": "node --import tsx src/download-ces.ts",
+    "build:variants": "node --import tsx src/build-variants.ts",
+    "combine:variants": "node --import tsx src/combine-variants.ts",
+    "combine:ces": "node --import tsx src/combine-ces.ts",
+    "download:skill-icons": "node --import tsx src/download-skill-icons.ts",
+    "download:mystic-codes": "node --import tsx src/download-mystic-codes.ts",
+    "download:runtime-skills": "node --import tsx src/download-runtime-skills.ts",
+    "compact:servants": "node --import tsx src/compact-servant.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

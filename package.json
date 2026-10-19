@@ -1,0 +1,31 @@
+{
+  "name": "mash-data",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Atlas Academy data pipeline for Mash",
+  "scripts": {
+    "atlas:start": "npm --prefix mash-atlasacademy run start",
+    "atlas:combine-variants": "npm --prefix mash-atlasacademy run combine:variants",
+    "atlas:build-variants": "npm --prefix mash-atlasacademy run build:variants",
+    "atlas:compact-servants": "npm --prefix mash-atlasacademy run compact:servants",
+    "atlas:download-runtime-skills": "npm --prefix mash-atlasacademy run download:runtime-skills",
+    "atlas:combine-ces": "npm --prefix mash-atlasacademy run combine:ces",
+    "verify:variants": "npm --prefix verification run test:servant-variants",
+    "verification:generate": "npm --prefix verification run verify:all",
+    "verify:variant-skill-target-types": "npm --prefix verification run verify:variant-skill-target-types",
+    "verify:resources": "npm --prefix verification run test:generate-servants",
+    "data:atlas": "npm run atlas:start && npm run atlas:download-runtime-skills && npm run atlas:build-variants && npm run atlas:combine-variants && npm run verify:variants && npm run verification:generate && npm run atlas:combine-ces",
+    "verify:all": "npm --prefix verification run verify:all",
+    "test:integrity": "npm --prefix verification run test:servant-variants",
+    "resources:generate-atlas-servants": "node scripts/generate-servants.ts",
+    "resources:sync": "node scripts/sync-resources.ts && npm run verify:variant-skill-target-types",
+    "assets:offline-base": "python3 scripts/release.py offline-base",
+    "assets:deploy": "bash scripts/deploy-assets-release.sh",
+    "start": "npm run data:atlas && npm run resources:sync",
+    "typecheck:scripts": "npm --prefix verification exec -- tsc -p tsconfig.json"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  }
+}

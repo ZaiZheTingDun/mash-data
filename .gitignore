@@ -1,0 +1,44 @@
+.DS_Store
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+
+# Assets build outputs
+dist/
+dist/assets-packs/
+dist/assets-release/
+*.zip
+*.zip.sha256
+
+# Local asset update/cache/temp files
+assets/.cache/
+assets/.tmp/
+assets/downloads/
+assets/staging/
+assets/backup/
+
+# Optional: ignore generated CDN manifests if under project root
+manifest-v*.json
+latest-assets.json
+
+# mise
+.mise.toml
+
+# Local credentials
+.env
+.env.*
+!.env.example
+.aws/
+
+# Production inputs and reports belong to the private data checkout.
+/assets/
+/resources/
+/config/
+/state/
+/verification/result/
+/mash-atlasacademy/data-version.json
+/private-data/
+.publication-audit/
