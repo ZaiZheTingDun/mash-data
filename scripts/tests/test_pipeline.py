@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,12 +17,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from assets_release.json_utils import to_json_bytes, write_json
 from assets_release.r2 import R2Store, safe_path, verify_file
 from pipeline_release import prepare, publish
-from record_data_update import git, record_update
+from record_data_update import git, record_update, render_summary, resource_counts
+from sync_release_manifest import sync_manifest
 from validate_assets import APPEND_ICONS, validate_assets
 
 
 def entry(content: bytes) -> dict:
     return {"size": len(content), "sha256": hashlib.sha256(content).hexdigest()}
+
+
+def read_release_manifest(root: Path, version: int) -> dict:
+    return json.loads((root / "dist" / "assets-release" / "manifests" / f"manifest-v{version}.json").read_text())
 
 
 class FakeR2:
@@ -122,6 +128,63 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(self.store.writes[-1], "latest.json")
         self.assertEqual(self.store.writes[-2], "manifests/manifest-v2.json")
 
+    def test_first_base_has_no_patch(self):
+        context = prepare(self.root, self.store, "base")
+        manifest = read_release_manifest(self.root, 1)
+        self.assertIsNone(context["patch"])
+        self.assertEqual(manifest["patches"], [])
+        self.assertFalse((self.root / "dist" / "assets-release" / "patches").exists())
+
+    def test_rebuilt_base_also_publishes_patch_and_retains_older_routes(self):
+        self.release_base()
+        self.next_version()
+        prepare(self.root, self.store, "patch")
+        publish(self.root, self.store)
+        old_patch = self.store.objects["patches/v1-to-v2.zip"]
+        self.store.writes.clear()
+
+        write_json(self.root / "assets" / "version.json", {"version": 3})
+        write_json(self.root / "assets" / "skills" / "1" / "data.json", {"id": 3})
+        # Keep a skill JSON for the required pack, but remove another managed file.
+        deleted = "ces/1/data.json"
+        (self.root / "assets" / deleted).unlink()
+        write_json(self.root / "state" / "release-deletions.json", {"version": 3, "files": [deleted]})
+        context = prepare(self.root, self.store, "base", base_compatible=True)
+        manifest = read_release_manifest(self.root, 3)
+        self.assertEqual(manifest["latestBase"], 3)
+        self.assertEqual(manifest["base"]["version"], 3)
+        self.assertEqual([(p["from"], p["to"]) for p in manifest["patches"]], [(1, 2), (2, 3)])
+        self.assertEqual(context["patch"]["file"], "patches/v2-to-v3.zip")
+        self.assertEqual(len(list((self.root / "dist" / "assets-release" / "base" / "v3").glob("*.zip"))), 7)
+        with zipfile.ZipFile(self.root / "dist" / "assets-release" / "patches" / "v2-to-v3.zip") as archive:
+            self.assertEqual(json.loads(archive.read("skills/1/data.json")), {"id": 3})
+            self.assertEqual(json.loads(archive.read("deletes.json")), {"files": [deleted]})
+        # No upload happens during preparation.
+        self.assertEqual(self.store.writes, [])
+        publish(self.root, self.store)
+        self.assertEqual(self.store.objects["patches/v1-to-v2.zip"], old_patch)
+        self.assertIn("patches/v2-to-v3.zip", self.store.writes)
+        self.assertIn("base/v3/assets-json-v3.zip", self.store.writes)
+        self.assertEqual(self.store.writes[-1], "latest.json")
+
+        # The following patch continues using the rebuilt base and complete history.
+        write_json(self.root / "assets" / "version.json", {"version": 4})
+        prepare(self.root, self.store, "patch")
+        manifest = read_release_manifest(self.root, 4)
+        self.assertEqual(manifest["base"]["version"], 3)
+        self.assertEqual([(p["from"], p["to"]) for p in manifest["patches"]], [(1, 2), (2, 3), (3, 4)])
+
+    def test_rebuilt_base_patch_failure_leaves_latest_unchanged(self):
+        self.release_base()
+        self.next_version()
+        prepare(self.root, self.store, "base", base_compatible=True)
+        before = self.store.objects["latest.json"]
+        self.store.fail_key = "patches/v1-to-v2.zip"
+        with self.assertRaisesRegex(RuntimeError, "interrupted"):
+            publish(self.root, self.store)
+        self.assertEqual(self.store.objects["latest.json"], before)
+        self.assertNotIn("manifests/manifest-v2.json", self.store.objects)
+
     def test_interrupted_upload_leaves_latest_unchanged(self):
         self.release_base()
         self.next_version()
@@ -198,7 +261,142 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(report["atlasStateBefore"]["JP"]["hash"], "before")
         self.assertEqual(report["atlasStateAfter"]["JP"]["hash"], "after")
         self.assertEqual(report["counts"], {"A": 1, "D": 1, "M": 1})
+        self.assertEqual(report["countsByResource"]["技能 JSON"], {"A": 1, "M": 0, "D": 0})
+        self.assertEqual(report["countsByResource"]["概念礼装 JSON"], {"A": 0, "M": 0, "D": 1})
+        self.assertEqual(report["countsByResource"]["Atlas 更新游标"], {"A": 0, "M": 1, "D": 0})
+        self.assertEqual(result["countsByResource"], report["countsByResource"])
         self.assertNotIn("unrelated.txt", git(self.root, "diff", "--cached", "--name-only"))
+
+    def test_resource_breakdown_separates_raw_variants_and_images(self):
+        paths = [
+            ("A", "assets/servants/2/servant.json", "从者数据 JSON"),
+            ("M", "assets/servants/1/servant-cn.json", "从者数据 JSON"),
+            ("A", "assets/servants/2/servant-raw.json", "从者原始 JSON"),
+            ("M", "assets/servants/1/servant-cn-raw.json", "从者原始 JSON"),
+            ("A", "assets/servants/2/card_servant_1.png", "从者图片"),
+            ("M", "assets/servants/1/servant_variants_cn.json", "战斗形态 JSON"),
+            ("M", "assets/servants_variants.json", "战斗形态 JSON"),
+            ("M", "assets/ces/1/craft-essence.json", "概念礼装 JSON"),
+            ("D", "assets/ces/1/card_ce.png", "概念礼装图片"),
+            ("A", "assets/skills/2/skill_cn.json", "技能 JSON"),
+            ("A", "assets/icons/skill_1.png", "技能图标"),
+            ("M", "assets/mystic-codes/1/mystic-code-cn.json", "魔术礼装 JSON"),
+            ("A", "assets/mystic-codes/1/item-male.png", "魔术礼装图片"),
+            ("M", "assets/craft_essences.json", "资源汇总"),
+            ("M", "resources/servants.json", "客户端资源"),
+            ("M", "state/atlas-data-version.json", "Atlas 更新游标"),
+            ("M", "verification/result/runtime-skills.json", "分析报告"),
+            ("M", "assets/version.json", "其他状态与配置"),
+        ]
+        changes = [{"status": status, "path": path} for status, path, _ in paths]
+        counts = resource_counts(changes)
+        for status, path, label in paths:
+            self.assertGreaterEqual(counts[label][status], 1, path)
+        self.assertEqual(counts["从者数据 JSON"], {"A": 1, "M": 1, "D": 0})
+        self.assertEqual(counts["从者原始 JSON"], {"A": 1, "M": 1, "D": 0})
+        self.assertEqual(counts["战斗形态 JSON"]["M"], 2)
+        self.assertEqual(sum(sum(values.values()) for values in counts.values()), len(paths))
+        result = {"changed": True, "countsByResource": counts}
+        summary = render_summary(result, "commit", "success")
+        self.assertIn("| 从者数据 JSON | 1 | 1 | 0 |", summary)
+        self.assertIn("| 概念礼装图片 | 0 | 0 | 1 |", summary)
+        self.assertNotIn("servant-cn.json", summary)
+        self.assertIn("推送失败", render_summary(result, "commit", "failure"))
+
+    def test_no_change_summary_still_lists_each_resource_type(self):
+        result = record_update(self.root, "1-1", "code", "run")
+        summary = render_summary(result, "commit", "skipped")
+        self.assertIn("更新结果：无变化", summary)
+        self.assertIn("| 从者数据 JSON | 0 | 0 | 0 |", summary)
+
+    def test_manifest_sync_only_stages_verified_published_manifest_and_can_repeat(self):
+        self.release_base()
+        manifest = read_release_manifest(self.root, 1)
+        source_commit = manifest["source"]["dataCommit"]
+        # Simulate data committed to private after the release's original snapshot.
+        resource_path = self.root / "resources" / "servants.json"
+        write_json(resource_path, {"newerData": True})
+        git(self.root, "add", "--", "resources/servants.json")
+        git(self.root, "commit", "-qm", "new data while publishing")
+        version_before = (self.root / "assets" / "version.json").read_bytes()
+        state_before = (self.root / "state" / "atlas-data-version.json").read_bytes()
+        self.assertTrue(sync_manifest(self.root, self.store, 1, source_commit))
+        self.assertEqual(json.loads((self.root / "assets" / "manifest.json").read_text()), manifest)
+        self.assertEqual(git(self.root, "diff", "--cached", "--name-only").splitlines(), ["assets/manifest.json"])
+        self.assertEqual(json.loads(resource_path.read_text()), {"newerData": True})
+        self.assertEqual((self.root / "assets" / "version.json").read_bytes(), version_before)
+        self.assertEqual((self.root / "state" / "atlas-data-version.json").read_bytes(), state_before)
+        git(self.root, "commit", "-qm", "sync manifest")
+        self.assertFalse(sync_manifest(self.root, self.store, 1, source_commit))
+
+    def test_preview_and_failed_publish_cannot_write_back_manifest(self):
+        self.release_base()
+        original = (self.root / "assets" / "manifest.json").read_bytes()
+        self.next_version()
+        context = prepare(self.root, self.store, "patch")
+        with self.assertRaisesRegex(ValueError, "unpublished manifest"):
+            sync_manifest(self.root, self.store, 2, context["dataCommit"])
+        self.store.fail_key = "patches/v1-to-v2.zip"
+        with self.assertRaises(RuntimeError):
+            publish(self.root, self.store)
+        with self.assertRaises(ValueError):
+            sync_manifest(self.root, self.store, 2, context["dataCommit"])
+        self.assertEqual((self.root / "assets" / "manifest.json").read_bytes(), original)
+        self.assertEqual(git(self.root, "diff", "--cached", "--name-only"), "")
+
+    def test_manifest_sync_works_with_manifest_only_sparse_checkout(self):
+        self.release_base()
+        manifest = read_release_manifest(self.root, 1)
+        git(self.root, "sparse-checkout", "set", "--no-cone", "/assets/manifest.json")
+        self.assertFalse((self.root / "assets" / "version.json").exists())
+        self.assertTrue(sync_manifest(self.root, self.store, 1, manifest["source"]["dataCommit"]))
+        self.assertEqual(git(self.root, "diff", "--cached", "--name-only").splitlines(), ["assets/manifest.json"])
+
+    def test_manifest_sync_refuses_wrong_source_or_incomplete_integrity_metadata(self):
+        self.release_base()
+        original = (self.root / "assets" / "manifest.json").read_bytes()
+        manifest = read_release_manifest(self.root, 1)
+        with self.assertRaisesRegex(ValueError, "different data commit"):
+            sync_manifest(self.root, self.store, 1, "wrong-commit")
+        manifest["base"]["packs"][0].pop("sha256")
+        self.store.objects["manifests/manifest-v1.json"] = to_json_bytes(manifest)
+        with self.assertRaisesRegex(ValueError, "incomplete integrity"):
+            sync_manifest(self.root, self.store, 1, manifest["source"]["dataCommit"])
+        self.assertEqual((self.root / "assets" / "manifest.json").read_bytes(), original)
+
+    def test_manifest_sync_refuses_remote_latest_moving_during_read(self):
+        self.release_base()
+        original = (self.root / "assets" / "manifest.json").read_bytes()
+        source_commit = read_release_manifest(self.root, 1)["source"]["dataCommit"]
+        read = self.store.read_json
+        latest_reads = 0
+
+        def move_latest(key, **kwargs):
+            nonlocal latest_reads
+            if key == "latest.json":
+                latest_reads += 1
+                if latest_reads == 2:
+                    self.store.objects[key] = to_json_bytes({"latest": 2})
+            return read(key, **kwargs)
+
+        with patch.object(self.store, "read_json", side_effect=move_latest):
+            with self.assertRaisesRegex(ValueError, "changed while reading"):
+                sync_manifest(self.root, self.store, 1, source_commit)
+        self.assertEqual((self.root / "assets" / "manifest.json").read_bytes(), original)
+
+    def test_manifest_sync_preserves_staged_work_and_newer_private_manifest(self):
+        self.release_base()
+        source_commit = read_release_manifest(self.root, 1)["source"]["dataCommit"]
+        write_json(self.root / "resources" / "servants.json", {"changed": True})
+        git(self.root, "add", "--", "resources/servants.json")
+        with self.assertRaisesRegex(ValueError, "empty index"):
+            sync_manifest(self.root, self.store, 1, source_commit)
+        git(self.root, "commit", "-qm", "data")
+        write_json(self.root / "assets" / "manifest.json", {"latest": 2})
+        git(self.root, "add", "--", "assets/manifest.json")
+        git(self.root, "commit", "-qm", "newer manifest")
+        with self.assertRaisesRegex(ValueError, "newer than this release"):
+            sync_manifest(self.root, self.store, 1, source_commit)
 
     def test_corrupt_image_and_missing_reference_fail_validation(self):
         target = self.root / "assets" / "icons" / "image.png"
@@ -218,6 +416,8 @@ class PipelineTests(unittest.TestCase):
         self.next_version()
         with self.assertRaisesRegex(ValueError, "no asset state"):
             prepare(self.root, self.store, "patch")
+        with self.assertRaisesRegex(ValueError, "no asset state"):
+            prepare(self.root, self.store, "base", base_compatible=True)
 
 
 class R2Tests(unittest.TestCase):

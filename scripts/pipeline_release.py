@@ -60,8 +60,8 @@ def prepare(root: Path, store: R2Store, mode: str, base_compatible: bool = False
             store.verify(state_path, state)
             payload, _ = store.read_json(state_path)
             previous_entries = read_asset_state_bytes(to_json_bytes(payload), previous_version, state_path)
-        if mode == "patch" and previous_entries is None:
-            raise ValueError("previous release has no asset state; restore its exact state before creating a patch")
+        if previous_entries is None:
+            raise ValueError("previous release has no asset state; restore its exact state before creating the required patch")
     elif mode == "patch":
         raise ValueError("patch requires an existing R2 release; use base for an empty destination")
     if mode == "base" and latest and not base_compatible:
@@ -69,6 +69,12 @@ def prepare(root: Path, store: R2Store, mode: str, base_compatible: bool = False
     current_entries = scan_asset_entries(root)
     deleted = set(previous_entries or {}) - set(current_entries)
     check_deletions(root, version, deleted)
+    patches = json.loads(json.dumps(previous_manifest["patches"])) if previous_manifest else []
+    new_patch = None
+    if latest:
+        new_patch = {"from": previous_version, "to": version,
+                     "file": f"patches/v{previous_version}-to-v{version}.zip"}
+        patches.append(new_patch)
     if mode == "base":
         source = {
             "latest": version, "latestBase": version,
@@ -76,14 +82,13 @@ def prepare(root: Path, store: R2Store, mode: str, base_compatible: bool = False
                 {"name": spec.name, "file": f"base/v{version}/{spec.output_name}-v{version}.zip"}
                 for spec in BaseBuilder(root).pack_specs()
             ]},
-            "patches": [],
+            "patches": patches,
         }
     else:
         # Preserve the installed base and all existing patch routes.
         source = json.loads(json.dumps(previous_manifest))
         source["latest"] = version
-        source["patches"].append({"from": previous_version, "to": version,
-                                  "file": f"patches/v{previous_version}-to-v{version}.zip"})
+        source["patches"] = patches
 
     # Only the runner's snapshot is used. Never commit release preparation to private.
     manifest_source = root / "assets" / "manifest.json"
@@ -93,7 +98,7 @@ def prepare(root: Path, store: R2Store, mode: str, base_compatible: bool = False
         clear_dist(root)
         if mode == "base":
             BaseBuilder(root).build()
-        else:
+        if new_patch is not None:
             PatchBuilder(root).build(f"v{previous_version}", f"v{version}", previous_entries)
         write_asset_state(root, version)
         manifest_path = ManifestBuilder(root, fallback_manifest=previous_manifest,
@@ -103,7 +108,7 @@ def prepare(root: Path, store: R2Store, mode: str, base_compatible: bool = False
         manifest["source"] = {"dataCommit": data_commit, "codeCommit": os.environ.get("GITHUB_SHA", "local")}
         write_json(manifest_path, manifest)
         context = {"previousVersion": previous_version, "previousETag": etag,
-                   "version": version, "mode": mode, "dataCommit": data_commit,
+                   "version": version, "mode": mode, "patch": new_patch, "dataCommit": data_commit,
                    "codeCommit": os.environ.get("GITHUB_SHA", "local"), "deleted": len(deleted),
                    "destination": {"endpoint": store.endpoint, "bucket": store.bucket, "prefix": store.prefix}}
         write_json(root / "dist" / "release-context.json", context)
