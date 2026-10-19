@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,7 @@ from assets_release.json_utils import to_json_bytes, write_json
 from assets_release.r2 import R2Store, safe_path, verify_file
 from pipeline_release import prepare, publish
 from record_data_update import git, record_update, render_summary, resource_counts
+from release import fetch_r2_object
 from sync_release_manifest import sync_manifest
 from validate_assets import APPEND_ICONS, validate_assets
 
@@ -421,6 +424,80 @@ class PipelineTests(unittest.TestCase):
 
 
 class R2Tests(unittest.TestCase):
+    @patch.dict("os.environ", {"R2_BUCKET": "test", "R2_ENDPOINT": "https://r2.example", "AWS_PROFILE": "",
+                               "AWS_ACCESS_KEY_ID": "test-access", "AWS_SECRET_ACCESS_KEY": "test-secret"}, clear=True)
+    def test_empty_profile_is_removed_from_cli_environment_but_credentials_are_preserved(self):
+        store = R2Store()
+        with patch("assets_release.r2.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "{}", "")) as run:
+            store.call("head-object", "latest.json")
+        self.assertNotIn("--profile", run.call_args.args[0])
+        environment = run.call_args.kwargs["env"]
+        self.assertNotIn("AWS_PROFILE", environment)
+        self.assertEqual(environment["AWS_ACCESS_KEY_ID"], "test-access")
+        self.assertEqual(environment["AWS_SECRET_ACCESS_KEY"], "test-secret")
+        self.assertEqual(os.environ["AWS_PROFILE"], "")
+
+    def test_explicit_and_default_named_profiles_still_work(self):
+        for settings, expected in (({}, "mash"), ({"AWS_PROFILE": "custom"}, "custom")):
+            with self.subTest(profile=expected), patch.dict("os.environ", {
+                "R2_BUCKET": "test", "R2_ENDPOINT": "https://r2.example", **settings,
+            }, clear=True):
+                with patch("assets_release.r2.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "{}", "")) as run:
+                    R2Store().call("head-object", "latest.json")
+                command = run.call_args.args[0]
+                self.assertEqual(command[command.index("--profile") + 1], expected)
+                self.assertEqual(run.call_args.kwargs["env"].get("AWS_PROFILE"), settings.get("AWS_PROFILE"))
+
+    @patch.dict("os.environ", {"R2_BUCKET": "test", "R2_ENDPOINT": "https://r2.example", "AWS_PROFILE": ""}, clear=True)
+    def test_legacy_patch_reader_also_removes_empty_profile(self):
+        with patch("release.subprocess.run", return_value=subprocess.CompletedProcess([], 0, b"{}", b"")) as run:
+            self.assertEqual(fetch_r2_object("latest.json"), b"{}")
+        self.assertNotIn("--profile", run.call_args.args[0])
+        self.assertNotIn("AWS_PROFILE", run.call_args.kwargs["env"])
+
+    def test_shell_deployer_cleans_empty_profile_and_preserves_named_profiles(self):
+        script = Path(__file__).resolve().parents[1] / "deploy-assets-release.sh"
+        with tempfile.TemporaryDirectory(prefix="mash-aws-env-test-") as temp:
+            root = Path(temp)
+            release = root / "dist" / "assets-release"
+            release.mkdir(parents=True)
+            (release / "latest.json").write_text("{}")
+            fake_aws = root / "aws"
+            fake_aws.write_text(f'#!{sys.executable}\n' + '''import json, os, sys
+with open(os.environ["AWS_TEST_LOG"], "a") as output:
+    output.write(json.dumps({"profile": os.environ.get("AWS_PROFILE"), "args": sys.argv[1:]}) + "\\n")
+''')
+            fake_aws.chmod(0o755)
+            for profile, expected in (("", None), ("custom", "custom"), (None, "mash")):
+                with self.subTest(profile=profile):
+                    log = root / "calls.jsonl"
+                    log.unlink(missing_ok=True)
+                    environment = {**os.environ, "PATH": f"{root}{os.pathsep}{os.environ.get('PATH', os.defpath)}",
+                                   "MASH_DATA_ROOT": str(root), "R2_ENDPOINT": "https://r2.example", "R2_BUCKET": "test",
+                                   "AWS_TEST_LOG": str(log)}
+                    environment.pop("AWS_PROFILE", None)
+                    if profile is not None:
+                        environment["AWS_PROFILE"] = profile
+                    subprocess.run(["bash", str(script)], env=environment, check=True, capture_output=True)
+                    calls = [json.loads(line) for line in log.read_text().splitlines()]
+                    self.assertEqual(len(calls), 2)
+                    for call in calls:
+                        if expected is None:
+                            self.assertIsNone(call["profile"])
+                            self.assertNotIn("--profile", call["args"])
+                        else:
+                            self.assertEqual(call["args"][call["args"].index("--profile") + 1], expected)
+
+    @unittest.skipUnless(shutil.which("aws"), "AWS CLI is not installed")
+    def test_real_aws_cli_accepts_empty_profile_via_store_without_network(self):
+        # --generate-cli-skeleton output validates locally without sending a request.
+        with patch.dict("os.environ", {
+            "PATH": os.environ.get("PATH", os.defpath), "R2_BUCKET": "test", "R2_ENDPOINT": "https://r2.example",
+            "AWS_PROFILE": "", "AWS_CONFIG_FILE": os.devnull, "AWS_SHARED_CREDENTIALS_FILE": os.devnull,
+            "AWS_EC2_METADATA_DISABLED": "true", "AWS_DEFAULT_REGION": "auto",
+        }, clear=True):
+            self.assertIsInstance(R2Store().call("head-object", "latest.json", "--generate-cli-skeleton", "output"), dict)
+
     def test_rejects_path_traversal(self):
         for value in ("/absolute", "../x", "states/../../x", "a\\b", "a//b", "a/./b"):
             with self.assertRaises(ValueError):
