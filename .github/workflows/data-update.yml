@@ -81,9 +81,11 @@ jobs:
         id: changes
         env:
           MASH_DATA_ROOT: ${{ github.workspace }}/private-data
+          UPDATE_SUMMARY_PATH: ${{ runner.temp }}/mash-data-update-summary.json
         run: python scripts/record_data_update.py
 
       - name: Commit and push successful update
+        id: push
         if: steps.changes.outputs.changed == 'true'
         working-directory: private-data
         run: |
@@ -93,13 +95,9 @@ jobs:
           git -c core.hooksPath=/dev/null push origin "HEAD:refs/heads/${PRIVATE_DATA_BRANCH}"
 
       - name: Summarize update
+        if: always() && steps.changes.outcome == 'success'
         env:
-          CHANGED: ${{ steps.changes.outputs.changed }}
-          FILES: ${{ steps.changes.outputs.files }}
-        run: |
-          python - <<'PY'
-          import os, subprocess
-          commit = subprocess.check_output(['git', '-C', 'private-data', 'rev-parse', 'HEAD'], text=True).strip()
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
-              output.write(f"Updated: {os.environ['CHANGED']}\n\nChanged data files: {os.environ['FILES']}\n\nPrivate commit: `{commit}`\n")
-          PY
+          MASH_DATA_ROOT: ${{ github.workspace }}/private-data
+          UPDATE_SUMMARY_PATH: ${{ runner.temp }}/mash-data-update-summary.json
+          PUSH_OUTCOME: ${{ steps.push.outcome }}
+        run: python scripts/record_data_update.py --summary

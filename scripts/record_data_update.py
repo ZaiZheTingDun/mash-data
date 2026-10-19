@@ -2,14 +2,70 @@
 """Stage a successful update and record its exact changes in the private checkout."""
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import subprocess
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from assets_release.json_utils import utc_timestamp, write_json
+from assets_release.json_utils import read_json, utc_timestamp, write_json
+
+
+RESOURCE_TYPES = (
+    "从者数据 JSON", "从者原始 JSON", "从者图片", "战斗形态 JSON",
+    "概念礼装 JSON", "概念礼装图片", "技能 JSON", "技能图标",
+    "魔术礼装 JSON", "魔术礼装图片", "资源汇总", "客户端资源",
+    "Atlas 更新游标", "分析报告", "其他状态与配置",
+)
+
+
+def resource_type(value: str) -> str:
+    path = PurePosixPath(value)
+    if path.name in {"servants_variants.json", "servants_variants_cn.json", "servant_variants.json", "servant_variants_cn.json"} and path.parts[0] == "assets":
+        return "战斗形态 JSON"
+    if value.startswith("assets/servants/"):
+        if path.name in {"servant-raw.json", "servant-cn-raw.json"}:
+            return "从者原始 JSON"
+        return "从者数据 JSON" if path.suffix == ".json" else "从者图片"
+    for directory, data_label, image_label in (
+        ("ces", "概念礼装 JSON", "概念礼装图片"),
+        ("mystic-codes", "魔术礼装 JSON", "魔术礼装图片"),
+    ):
+        if value.startswith(f"assets/{directory}/"):
+            return data_label if path.suffix == ".json" else image_label
+    if value.startswith("assets/skills/"):
+        return "技能 JSON"
+    if value.startswith("assets/icons/"):
+        return "技能图标"
+    if value.startswith("assets/") and path.name not in {"version.json", "manifest.json"}:
+        return "资源汇总"
+    if value.startswith("resources/"):
+        return "客户端资源"
+    if value == "state/atlas-data-version.json":
+        return "Atlas 更新游标"
+    if value.startswith("verification/result/"):
+        return "分析报告"
+    return "其他状态与配置"
+
+
+def resource_counts(changes: list[dict]) -> dict:
+    counts = {label: {"A": 0, "M": 0, "D": 0} for label in RESOURCE_TYPES}
+    for change in changes:
+        status = "M" if change["status"] == "T" else change["status"]
+        counts[resource_type(change["path"])][status] += 1
+    return counts
+
+
+def render_summary(result: dict, commit: str, push_outcome: str) -> str:
+    status = "无变化" if not result["changed"] else "已提交并推送" if push_outcome == "success" else "推送失败"
+    lines = [f"更新结果：{status}", "", f"Private commit: `{commit}`", "",
+             "统计单位为文件，JP/CN 分别计数；原始 JSON 与精简数据分开统计。", "",
+             "| 资源类型 | 新增 | 修改 | 删除 |", "| --- | ---: | ---: | ---: |"]
+    for label, counts in result["countsByResource"].items():
+        lines.append(f'| {label} | {counts["A"]} | {counts["M"]} | {counts["D"]} |')
+    return "\n".join(lines) + "\n"
 
 
 def git(root: Path, *args: str) -> str:
@@ -30,7 +86,8 @@ def record_update(root: Path, run_id: str, code_commit: str, run_url: str) -> di
     fields = git(root, "diff", "--cached", "--no-renames", "--name-status", "-z").split("\0")
     changes = [{"status": fields[i], "path": fields[i + 1]} for i in range(0, len(fields) - 1, 2)]
     counts = dict(Counter(item["status"] for item in changes))
-    result = {"changed": bool(changes), "files": len(changes), "counts": counts}
+    by_resource = resource_counts(changes)
+    result = {"changed": bool(changes), "files": len(changes), "counts": counts, "countsByResource": by_resource}
     if not changes:
         return result
     report_path = f"state/updates/{run_id}.json"
@@ -44,6 +101,7 @@ def record_update(root: Path, run_id: str, code_commit: str, run_url: str) -> di
         "atlasStateBefore": before_state,
         "atlasStateAfter": after_state,
         "counts": counts,
+        "countsByResource": by_resource,
         "files": changes,
     })
     git(root, "add", "--", report_path)
@@ -51,13 +109,24 @@ def record_update(root: Path, run_id: str, code_commit: str, run_url: str) -> di
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--summary", action="store_true")
+    args = parser.parse_args()
     root = Path(os.environ["MASH_DATA_ROOT"]).resolve()
+    if args.summary:
+        result = read_json(Path(os.environ["UPDATE_SUMMARY_PATH"]))
+        summary = render_summary(result, git(root, "rev-parse", "HEAD").strip(), os.environ.get("PUSH_OUTCOME", ""))
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as file:
+            file.write(summary)
+        return
     result = record_update(
         root,
         f'{os.environ["GITHUB_RUN_ID"]}-{os.environ["GITHUB_RUN_ATTEMPT"]}',
         os.environ["GITHUB_SHA"],
         f'{os.environ["GITHUB_SERVER_URL"]}/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{os.environ["GITHUB_RUN_ID"]}',
     )
+    if path := os.environ.get("UPDATE_SUMMARY_PATH"):
+        write_json(Path(path), result)
     if output := os.environ.get("GITHUB_OUTPUT"):
         with open(output, "a", encoding="utf-8") as file:
             file.write(f'changed={str(result["changed"]).lower()}\nfiles={result["files"]}\n')
