@@ -22,7 +22,7 @@ export MASH_DATA_ROOT=/absolute/path/to/your-data
 { "version": 1 }
 ```
 
-使用本文的底层手动构建命令时，发布清单源文件为 `assets/manifest.json`，需由维护者准备；官方发布 Action 会自动生成清单，并在 R2 发布成功后将完整清单提交回 private。下面是版本 1 基础发布的完整分包示例，版本号仅作演示：
+使用本文的底层手动构建命令时，发布清单源文件为 `assets/manifest.json`，需由维护者准备；官方发布 Action 会在 runner 中自动递增版本并生成清单，在 R2 发布成功后将完整清单和版本号提交回 private。下面是版本 1 基础发布的完整分包示例，版本号仅作演示：
 
 ```json
 {

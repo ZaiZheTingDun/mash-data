@@ -56,7 +56,7 @@ jobs:
             exit 1
           fi
           if [[ "$PUBLISH_REQUESTED" == 'true' && -z "$PRIVATE_DATA_WRITE_TOKEN" ]]; then
-            echo '::error::PRIVATE_DATA_WRITE_TOKEN is required to write back the published manifest'
+            echo '::error::PRIVATE_DATA_WRITE_TOKEN is required to write back the published manifest and version'
             exit 1
           fi
 
@@ -96,7 +96,7 @@ jobs:
         run: |
           npm run verify:variants
 
-      - name: Build release against R2 current version
+      - name: Auto-increment version and build release
         env:
           MASH_DATA_ROOT: ${{ github.workspace }}/private-data
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -136,7 +136,7 @@ jobs:
           PY
 
   writeback:
-    name: Write published manifest to private
+    name: Write published manifest and version to private
     needs: release
     if: inputs.publish
     runs-on: ubuntu-24.04
@@ -164,7 +164,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Check out current private branch for manifest writeback
+      - name: Check out current private branch for release metadata writeback
         uses: actions/checkout@v7
         with:
           repository: ${{ vars.PRIVATE_DATA_REPOSITORY }}
@@ -173,10 +173,12 @@ jobs:
           path: private-data
           persist-credentials: true
           fetch-depth: 1
-          sparse-checkout: /assets/manifest.json
+          sparse-checkout: |
+            /assets/manifest.json
+            /assets/version.json
           sparse-checkout-cone-mode: false
 
-      - name: Stage verified published manifest
+      - name: Stage verified published manifest and version
         id: sync
         env:
           MASH_DATA_ROOT: ${{ github.workspace }}/private-data
@@ -184,17 +186,17 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python scripts/sync_release_manifest.py --version "$RELEASE_VERSION" --data-commit "$RELEASE_DATA_COMMIT"
 
-      - name: Commit and push manifest only
+      - name: Commit and push release metadata only
         id: push
         if: steps.sync.outputs.changed == 'true'
         working-directory: private-data
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -c core.hooksPath=/dev/null commit --quiet -m "chore(data): sync published manifest v${RELEASE_VERSION}"
+          git -c core.hooksPath=/dev/null commit --quiet -m "chore(data): sync published release v${RELEASE_VERSION}"
           git -c core.hooksPath=/dev/null push origin "HEAD:refs/heads/${PRIVATE_DATA_BRANCH}"
 
-      - name: Summarize manifest writeback
+      - name: Summarize release metadata writeback
         if: always()
         env:
           SYNC_OUTCOME: ${{ steps.sync.outcome }}
@@ -206,7 +208,7 @@ jobs:
           synced = os.environ['SYNC_OUTCOME'] == 'success' and (os.environ['CHANGED'] == 'false' or os.environ['PUSH_OUTCOME'] == 'success')
           status = 'synchronized' if synced else 'failed; re-run this writeback job to retry without republishing'
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
-              output.write(f"R2 release: published v{os.environ['RELEASE_VERSION']}\n\nPrivate manifest: {status}\n")
+              output.write(f"R2 release: published v{os.environ['RELEASE_VERSION']}\n\nPrivate manifest and version: {status}\n")
           if not synced:
-              print(f"::error::Release v{os.environ['RELEASE_VERSION']} is already published; private manifest sync failed. Re-run failed jobs to retry the writeback.")
+              print(f"::error::Release v{os.environ['RELEASE_VERSION']} is already published; private manifest/version sync failed. Re-run failed jobs to retry the writeback.")
           PY

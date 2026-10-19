@@ -20,9 +20,9 @@
 | Action | 用途 |
 | --- | --- |
 | [Update private data](.github/workflows/data-update.yml) | 拉取官方 private 仓库，自动更新 Atlas 数据、客户端资源和 state，记录本次更改并提交回 private；最终按资源类型列出新增、修改和删除数量 |
-| [Release private assets](.github/workflows/assets-release.yml) | 基于官方 private 分支的最新提交，自动校验、构建数据包，并在启用发布时上传至官方 R2、更新发布入口，成功后将 manifest 自动提交回 private |
+| [Release private assets](.github/workflows/assets-release.yml) | 基于官方 private 分支的最新提交，自动递增版本号、校验并构建数据包；启用发布时上传官方 R2、更新发布入口，成功后将 manifest 和版本号提交回 private |
 
-两条流程目前均由维护者从 `main` 手动触发，触发后的更新、构建和发布步骤自动执行。发布版本由 private 的 `assets/version.json` 管理；发布 Action 默认只构建校验，勾选 `publish` 后执行正式发布。
+两条流程目前均由维护者从 `main` 手动触发，触发后的更新、构建和发布步骤自动执行。发布 Action 在 runner 中自动递增版本号，正式发布成功后将新版本写回 private 的 `assets/version.json`，无需手动升版。默认只构建校验，勾选 `publish` 后执行正式发布。
 
 发布 Action 选择 `base` 时，已有线上版本会同时构建新基础包和本次增量 patch，并保留历史 patch 链；首次发布只构建基础包。
 

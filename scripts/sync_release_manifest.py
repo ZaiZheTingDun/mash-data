@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage the verified, published manifest in a fresh private checkout."""
+"""Stage the published manifest and version in a fresh private checkout."""
 from __future__ import annotations
 
 import argparse
@@ -16,8 +16,14 @@ def sync_manifest(root: Path, store: R2Store, version: int, data_commit: str) ->
         raise ValueError("expected a positive published version")
     if git(root, "diff", "--cached", "--name-only").strip():
         raise ValueError("manifest sync requires an empty index")
-    if git(root, "diff", "--", "assets/manifest.json").strip():
-        raise ValueError("assets/manifest.json has uncommitted changes")
+    metadata_paths = ["assets/manifest.json", "assets/version.json"]
+    if git(root, "diff", "--", *metadata_paths).strip():
+        raise ValueError("release metadata has uncommitted changes")
+    version_path = root / "assets" / "version.json"
+    version_config = read_json(version_path)
+    private_version = version_config.get("version")
+    if type(private_version) is not int or private_version < 1 or private_version > version:
+        raise ValueError("private version must be valid and cannot be newer than this release")
     latest, etag = store.read_json("latest.json")
     manifest_path = f"manifests/manifest-v{version}.json"
     if latest["latest"] != version or latest["manifest"] != manifest_path:
@@ -50,10 +56,11 @@ def sync_manifest(root: Path, store: R2Store, version: int, data_commit: str) ->
     if current_etag != etag or current != latest:
         raise ValueError("R2 latest changed while reading the published manifest")
     write_json(path, manifest)
-    git(root, "add", "--", "assets/manifest.json")
+    write_json(version_path, {**version_config, "version": version})
+    git(root, "add", "--", *metadata_paths)
     staged = git(root, "diff", "--cached", "--name-only").splitlines()
-    if staged not in ([], ["assets/manifest.json"]):
-        raise ValueError("manifest sync must stage only assets/manifest.json")
+    if any(path not in metadata_paths for path in staged):
+        raise ValueError("release sync must stage only assets/manifest.json and assets/version.json")
     return bool(staged)
 
 
@@ -66,7 +73,7 @@ def main() -> None:
     if output := os.environ.get("GITHUB_OUTPUT"):
         with open(output, "a", encoding="utf-8") as file:
             file.write(f"changed={str(changed).lower()}\n")
-    print(f"Published manifest v{args.version}: {'staged for commit' if changed else 'already synchronized'}")
+    print(f"Published manifest and version v{args.version}: {'staged for commit' if changed else 'already synchronized'}")
 
 
 if __name__ == "__main__":

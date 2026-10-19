@@ -37,12 +37,16 @@ def check_deletions(root: Path, version: int, deleted: set[str]) -> None:
 
 
 def prepare(root: Path, store: R2Store, mode: str, base_compatible: bool = False) -> dict:
-    version = positive_version(read_json(root / "assets" / "version.json").get("version"))
+    version_path = root / "assets" / "version.json"
+    original_version = version_path.read_bytes()
+    version_config = read_json(version_path)
+    configured_version = positive_version(version_config.get("version"))
     validate_assets(root)
     latest, etag = store.read_json("latest.json", missing_ok=True)
     previous_version = positive_version(latest.get("latest")) if latest else 0
-    if version <= previous_version:
-        raise ValueError(f"private assets/version.json must be newer than R2 v{previous_version}; got v{version}")
+    # Increment inside this build snapshot. R2 and the persisted private version
+    # are both lower bounds; a stale checkout must never reuse a published version.
+    version = max(configured_version, previous_version) + 1 if latest else configured_version
     previous_manifest = None
     previous_entries = None
     if latest:
@@ -94,6 +98,7 @@ def prepare(root: Path, store: R2Store, mode: str, base_compatible: bool = False
     manifest_source = root / "assets" / "manifest.json"
     original_source = manifest_source.read_bytes() if manifest_source.exists() else None
     try:
+        write_json(version_path, {**version_config, "version": version})
         write_json(manifest_source, source)
         clear_dist(root)
         if mode == "base":
@@ -114,6 +119,7 @@ def prepare(root: Path, store: R2Store, mode: str, base_compatible: bool = False
         write_json(root / "dist" / "release-context.json", context)
         return context
     finally:
+        version_path.write_bytes(original_version)
         if original_source is None:
             manifest_source.unlink(missing_ok=True)
         else:
