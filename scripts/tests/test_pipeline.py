@@ -111,7 +111,6 @@ class PipelineTests(unittest.TestCase):
         self.store.writes.clear()
 
     def next_version(self):
-        write_json(self.root / "assets" / "version.json", {"version": 2})
         write_json(self.root / "assets" / "skills" / "1" / "data.json", {"id": 2})
 
     def test_base_and_patch_preserve_history_and_publish_latest_last(self):
@@ -146,7 +145,6 @@ class PipelineTests(unittest.TestCase):
         old_patch = self.store.objects["patches/v1-to-v2.zip"]
         self.store.writes.clear()
 
-        write_json(self.root / "assets" / "version.json", {"version": 3})
         write_json(self.root / "assets" / "skills" / "1" / "data.json", {"id": 3})
         # Keep a skill JSON for the required pack, but remove another managed file.
         deleted = "ces/1/data.json"
@@ -171,7 +169,6 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(self.store.writes[-1], "latest.json")
 
         # The following patch continues using the rebuilt base and complete history.
-        write_json(self.root / "assets" / "version.json", {"version": 4})
         prepare(self.root, self.store, "patch")
         manifest = read_release_manifest(self.root, 4)
         self.assertEqual(manifest["base"]["version"], 3)
@@ -230,13 +227,64 @@ class PipelineTests(unittest.TestCase):
             publish(self.root, self.store)
         self.assertEqual(self.store.objects["latest.json"], other)
 
-    def test_refuses_reused_version_and_unconfirmed_base(self):
+    def test_auto_increments_from_remote_without_manual_version_bump(self):
         self.release_base()
-        with self.assertRaisesRegex(ValueError, "must be newer"):
-            prepare(self.root, self.store, "patch")
+        before = (self.root / "assets" / "version.json").read_bytes()
+        self.assertEqual(prepare(self.root, self.store, "patch")["version"], 2)
+        self.assertEqual((self.root / "assets" / "version.json").read_bytes(), before)
+        # Previewing again does not consume a persisted version.
+        self.assertEqual(prepare(self.root, self.store, "patch")["version"], 2)
+        publish(self.root, self.store)
+        # A stale private v1 still builds v3 against published v2.
+        self.assertEqual(prepare(self.root, self.store, "patch")["version"], 3)
+        self.assertEqual((self.root / "assets" / "version.json").read_bytes(), before)
+
+    def test_private_version_is_also_a_lower_bound(self):
+        self.release_base()
+        write_json(self.root / "assets" / "version.json", {"version": 5})
+        self.assertEqual(prepare(self.root, self.store, "patch")["version"], 6)
+
+    def test_unconfirmed_base_still_fails(self):
+        self.release_base()
         self.next_version()
         with self.assertRaisesRegex(ValueError, "compatibility"):
             prepare(self.root, self.store, "base")
+
+    def test_failed_build_restores_local_version_config(self):
+        self.release_base()
+        before = (self.root / "assets" / "version.json").read_bytes()
+        with patch("pipeline_release.PatchBuilder.build", side_effect=RuntimeError("build failed")):
+            with self.assertRaisesRegex(RuntimeError, "build failed"):
+                prepare(self.root, self.store, "patch")
+        self.assertEqual((self.root / "assets" / "version.json").read_bytes(), before)
+        self.assertEqual(self.store.read_json("latest.json")[0]["latest"], 1)
+
+    def test_v14_builds_v15_and_writes_manifest_and_version_after_publication(self):
+        config = {"version": 14, "atlasExportDate": "2026-09-24"}
+        write_json(self.root / "assets" / "version.json", config)
+        git(self.root, "add", "--", "assets/version.json")
+        git(self.root, "commit", "-qm", "version 14")
+        original = (self.root / "assets" / "version.json").read_bytes()
+        prepare(self.root, self.store, "base")
+        publish(self.root, self.store)
+        context = prepare(self.root, self.store, "base", base_compatible=True)
+        self.assertEqual(context["version"], 15)
+        manifest = read_release_manifest(self.root, 15)
+        self.assertEqual(manifest["base"]["version"], 15)
+        self.assertEqual(manifest["patches"][-1]["file"], "patches/v14-to-v15.zip")
+        for pack in manifest["base"]["packs"]:
+            with zipfile.ZipFile(self.root / "dist" / "assets-release" / pack["file"]) as archive:
+                self.assertEqual(json.loads(archive.read("pack-manifest.json"))["version"], 15)
+        self.assertEqual((self.root / "assets" / "version.json").read_bytes(), original)
+        with self.assertRaisesRegex(ValueError, "unpublished manifest"):
+            sync_manifest(self.root, self.store, 15, context["dataCommit"])
+        self.assertEqual((self.root / "assets" / "version.json").read_bytes(), original)
+        publish(self.root, self.store)
+        self.assertTrue(sync_manifest(self.root, self.store, 15, context["dataCommit"]))
+        self.assertEqual(json.loads((self.root / "assets" / "version.json").read_text()), {**config, "version": 15})
+        self.assertEqual(git(self.root, "diff", "--cached", "--name-only").splitlines(), ["assets/manifest.json", "assets/version.json"])
+        git(self.root, "commit", "-qm", "sync release 15")
+        self.assertFalse(sync_manifest(self.root, self.store, 15, context["dataCommit"]))
 
     def test_deletions_require_exact_versioned_list(self):
         self.release_base()
@@ -347,11 +395,11 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual((self.root / "assets" / "manifest.json").read_bytes(), original)
         self.assertEqual(git(self.root, "diff", "--cached", "--name-only"), "")
 
-    def test_manifest_sync_works_with_manifest_only_sparse_checkout(self):
+    def test_manifest_sync_works_with_metadata_only_sparse_checkout(self):
         self.release_base()
         manifest = read_release_manifest(self.root, 1)
-        git(self.root, "sparse-checkout", "set", "--no-cone", "/assets/manifest.json")
-        self.assertFalse((self.root / "assets" / "version.json").exists())
+        git(self.root, "sparse-checkout", "set", "--no-cone", "/assets/manifest.json", "/assets/version.json")
+        self.assertFalse((self.root / "resources" / "servants.json").exists())
         self.assertTrue(sync_manifest(self.root, self.store, 1, manifest["source"]["dataCommit"]))
         self.assertEqual(git(self.root, "diff", "--cached", "--name-only").splitlines(), ["assets/manifest.json"])
 
@@ -398,6 +446,15 @@ class PipelineTests(unittest.TestCase):
         write_json(self.root / "assets" / "manifest.json", {"latest": 2})
         git(self.root, "add", "--", "assets/manifest.json")
         git(self.root, "commit", "-qm", "newer manifest")
+        with self.assertRaisesRegex(ValueError, "newer than this release"):
+            sync_manifest(self.root, self.store, 1, source_commit)
+
+    def test_manifest_sync_refuses_to_downgrade_newer_private_version(self):
+        self.release_base()
+        source_commit = read_release_manifest(self.root, 1)["source"]["dataCommit"]
+        write_json(self.root / "assets" / "version.json", {"version": 2})
+        git(self.root, "add", "--", "assets/version.json")
+        git(self.root, "commit", "-qm", "newer version")
         with self.assertRaisesRegex(ValueError, "newer than this release"):
             sync_manifest(self.root, self.store, 1, source_commit)
 

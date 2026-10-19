@@ -7,8 +7,8 @@
 ## 官方数据包的维护流程
 
 1. 运行 **Update private data**，自动拉取 Atlas 数据、生成客户端资源、更新 state，并将数据与本次更改记录一起提交到官方 private 仓库。
-2. 检查 private 中的更新提交和变更记录，设置并提交 `assets/version.json` 中的官方数据包版本。
-3. 运行 **Release private assets**，读取 private 分支最新内容，自动校验并构建本次数据包。默认 `publish=false`，用于构建验证；正式发布时勾选 `publish`，自动上传、更新官方发布入口，再将已发布 manifest 提交回 private。
+2. 检查 private 中的更新提交和变更记录，无需手工修改发布版本号。
+3. 运行 **Release private assets**，读取 private 分支最新内容，在 runner 中自动递增版本号、校验并构建本次数据包。默认 `publish=false`，用于构建验证；正式发布时勾选 `publish`，自动上传、更新官方发布入口，再将已发布 manifest 和新版本号提交回 private。
 
 工具代码取本次 workflow 的 commit，数据取 private 指定分支的最新 commit，每次构建都记录实际使用的数据与工具版本。两条流程共用并发组，不同时更新或发布；已经运行的任务不会被新任务取消。GitHub 同一并发组只保留一个待执行任务，多次重复触发可能替换尚未开始的任务。
 
@@ -39,11 +39,11 @@ Update Action 的最终 summary 按资源类型列出**新增、修改、删除*
 
 1. 拉取 private 分支最新提交，并固定这次 checkout 的 commit。
 2. 验证已提交的 variants、资源 JSON 和图片；不访问 Atlas，也不重新生成数据或推进 state。
-3. 从 private 的 `assets/version.json` 读取目标整数版本，从 R2 的 `latest.json` 读取已发布版本。目标版本必须更大；版本由维护者在 private 中修改并提交。
+3. 读取 private 的 `assets/version.json` 和 R2 的 `latest.json`。已有线上版本时，自动选择 `max(private 版本, R2 latest) + 1`，在 runner 本次构建中临时更新版本配置，确保所有基础包、patch、state 和 manifest 使用同一新版本。private 和线上均为 v14 时，本次自动构建 v15；private 落后于线上也以较大的版本为下限。空目标首次构建 base 时沿用 private 中的初始版本。
 4. 默认生成从 R2 当前版本到目标版本的 patch，保留已发布 base 和历史 patch 路线。从 R2 的上一版 manifest/state 读取历史对象校验信息和文件状态。
    选择 `base` 时，构建新基础包，同时生成从上一线上版本到本次版本的 patch，并在新 manifest 中保留历史 patch 链；空目标首次发布只构建 base。
 5. `publish=false` 时只构建和校验，不写 R2。`publish=true` 时先上传版本化 ZIP、state、校验文件，再上传 manifest；所有引用对象均从 R2 S3 API 回读并校验大小和 SHA-256，最后切换 `latest.json`。
-6. R2 发布及最终验证成功后，独立的 **Write published manifest to private** job 拉取 private 当前分支，将本次线上 manifest 写入 `assets/manifest.json`，单独提交并普通 push。该提交只包含 manifest，保留完整历史 patch、校验信息、state 引用和来源 commit。
+6. R2 发布及最终验证成功后，独立的 **Write published manifest and version to private** job 拉取 private 当前分支，将本次线上 manifest 写入 `assets/manifest.json`，并将已发布版本写入 `assets/version.json`，单独提交并普通 push。该提交只包含这两个文件，保留完整历史 patch、校验信息、state 引用和来源 commit。
 
 workflow 输入：
 
@@ -53,9 +53,9 @@ workflow 输入：
 | `publish` | `false` | 勾选后才上传并更新 latest |
 | `base_compatible` | `false` | 已有线上版本时，重建 base 必须确认受支持客户端兼容 |
 
-pipeline 在 runner 内根据线上 manifest 生成本次清单，并在构建后恢复构建快照中的 `assets/manifest.json`，因此预览和失败的构建不会更改 private。生成的发布 manifest 带有 `source.dataCommit` / `source.codeCommit`，便于定位数据与工具版本。正式发布成功后才将完整清单回写 private，无需手工维护 patch 链；ZIP 等发布产物不提交到 private。
+pipeline 在 runner 内临时递增版本号，并根据线上 manifest 生成本次清单；构建结束后恢复输入快照中的 `assets/version.json` 和 `assets/manifest.json`，目标版本保存在构建产物及 release context 中。预览和失败的构建不会向 private 写入版本，也不会消耗持久化版本号；线上和 private 不变时，重复预览仍使用同一个目标版本。生成的发布 manifest 带有 `source.dataCommit` / `source.codeCommit`，便于定位数据与工具版本。正式发布成功后才将完整清单和版本号回写 private，无需手工维护 patch 链；ZIP 等发布产物不提交到 private。
 
-回写 job 使用 private 分支的最新提交作为父提交，只暂存 `assets/manifest.json`，不会覆盖数据、state 或 `assets/version.json`，也不要求 private 仍停留在构建使用的 commit。若期间已有新数据提交，manifest 记录本次已发布的数据快照，`source.dataCommit` 仍指向实际用于构建的数据 commit。写回前会核对线上 latest、本次发布版本和来源 commit；若线上版本已推进，或 private manifest 已指向更高版本，则拒绝回写，避免旧任务覆盖较新的发布记录。
+回写 job 使用 private 分支的最新提交作为父提交，只暂存 `assets/manifest.json` 和 `assets/version.json`，其中版本配置仅修改 `version`，保留 `atlasExportDate` 等其他字段；不会覆盖数据或 state，也不要求 private 仍停留在构建使用的 commit。若期间已有新数据提交，manifest 记录本次已发布的数据快照，`source.dataCommit` 仍指向实际用于构建的数据 commit。写回前会核对线上 latest、本次发布版本和来源 commit；若线上版本已推进，或 private 的 manifest / version 已指向更高版本，则拒绝回写，避免旧任务覆盖较新的发布记录。
 
 R2 发布与 Git push 不能原子完成。回写推送失败时，线上版本已经发布，workflow 会明确显示“已发布、private 清单同步失败”，不会回滚 R2 或 force push。此时选择 **Re-run failed jobs**，只重跑回写 job，从 private 最新分支重新同步；不重新构建或发布数据包。若清单已经一致则跳过提交。GitHub 支持单独重跑失败 job，见 [官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)。
 
@@ -78,7 +78,7 @@ R2 发布与 Git push 不能原子完成。回写推送失败时，线上版本�
 
 版本化对象通过 `If-None-Match: *` 创建，已有同键对象只在回读校验一致时复用，不覆盖不同内容。latest 通过准备阶段读取的 ETag 执行 `If-Match` 条件写入；首次发布用 `If-None-Match: *`。这也防止 Actions 以外的并发发布被覆盖。R2 支持这些条件写入，见 [Cloudflare 文档](https://developers.cloudflare.com/r2/api/s3/api/)。
 
-上传或校验失败时，不推进 latest。保留同一份构建产物可重试未完成的上传；重新运行 workflow 会重新构建，ZIP 时间戳等可能变化。若前次已写入同版本对象，新产物不一致会失败，此时应使用新的 private 发布版本，不能覆盖已写入的对象。latest 成功切换后若最终回读失败，需检查线上实际状态，不应据此认定未发布。
+上传或校验失败时，不推进 latest。保留同一份构建产物可重试未完成的上传；重新运行 workflow 会重新构建，ZIP 时间戳等可能变化。若前次已写入同版本对象，新产物不一致会失败。故障恢复时可将 private 的版本下限提高到该冲突版本，让 pipeline 选择下一版本，不能覆盖已写入的对象。latest 成功切换后若最终回读失败，需检查线上实际状态，不应据此认定未发布。
 
 版本化对象缓存一年并标记 immutable，latest 使用 60 秒缓存并要求过期后重新验证。上传验证通过 R2 S3 API，不以公共 CDN 缓存判断上传是否成功；实际客户端升级仍需单独验证。
 
