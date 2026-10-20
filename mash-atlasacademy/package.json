@@ -11,6 +11,7 @@
     "build:variants": "node --import tsx src/build-variants.ts",
     "combine:variants": "node --import tsx src/combine-variants.ts",
     "combine:ces": "node --import tsx src/combine-ces.ts",
+    "combine:events": "node --import tsx src/combine-events.ts",
     "download:skill-icons": "node --import tsx src/download-skill-icons.ts",
     "download:mystic-codes": "node --import tsx src/download-mystic-codes.ts",
     "download:runtime-skills": "node --import tsx src/download-runtime-skills.ts",

@@ -9,6 +9,7 @@
 ## 功能
 
 - 根据 Atlas 数据版本和 Changes 日志更新从者与概念礼装详情，保存 raw、生成精简数据并补齐缺失图片。
+- 从 JP/CN 活动索引生成可发布的活动目录。
 - 生成 JP/CN 从者战斗形态，收集技能切换依赖，汇总客户端所需 JSON。
 - 检查形态技能的来源与元数据，生成目标选择、选项选择等分析报告。
 - 构建基础资源包、增量补丁和离线导入包，并通过现有脚本上传至 Cloudflare R2。
@@ -113,7 +114,8 @@ npm start
 | `npm run verify:variants` | 检查真实数据中 JP/CN 形态的技能来源、名称和图标元数据 |
 | `npm run verification:generate` | 生成四类分析报告 |
 | `npm run resources:generate-atlas-servants` | 生成 `resources/servants.json` |
-| `npm run resources:sync` | 生成从者资源、复制形态与礼装汇总，再生成目标差异报告 |
+| `npm run resources:sync` | 生成从者资源、复制形态、礼装汇总与活动目录，再生成目标差异报告 |
+| `npm run atlas:combine-events` | 从本地 JP/CN 活动索引生成活动目录 |
 | `npm run assets:offline-base` | 构建供手动导入的离线资源包 |
 
 `data:atlas` 中的报告步骤会读取已有 `resources/`。下载、汇总和检查可以单独执行，但需满足各步骤的输入要求。`verify:all` 是报告生成命令的别名，并不运行所有测试。
@@ -129,6 +131,7 @@ npm start
 | [scripts/](scripts/) | 客户端资源生成、Python 打包和 Bash 上传入口 |
 | [shared/](shared/) | TypeScript 工具共用的数据路径函数 |
 | [数据获取与缓存](docs/data-fetch-strategy.md) | 增量更新、游标推进和失败重试行为 |
+| [活动目录](docs/events.md) | 活动目录的来源、字段和更新方式 |
 | [战斗形态数据格式](mash-atlasacademy/docs/servant-variants.md) | 字段含义、分组规则与运行时技能 |
 | [资源构建与部署](docs/deployment.md) | 基础包、补丁、离线包与 R2 上传 |
 | [官方 Mash 数据包构建与发布](docs/pipelines.md) | 官方数据更新、数据包自动构建与发布，以及维护者配置 |

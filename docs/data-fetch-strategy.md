@@ -23,7 +23,7 @@
 | JP 从者图片 | 根据从者详情逐项处理 | 检查目标路径 | 已存在则跳过 |
 | JP/CN 礼装基础列表 | 每次获取完整 `basic_equip.json` | 遍历全部有效 `collectionNo` | 不单独落盘 |
 | JP/CN 礼装详情 | `/info` 与 Changes；详情使用 `nice/equip?lore=true` | 礼装/技能/函数/Buff 变化、raw 缺失或损坏 | 写入 raw，每次重建精简 JSON |
-| JP/CN 活动索引 | 每次获取 `basic_event.json` | 校验 ID 与名称 | 缓存至 `state/atlas-events-jp.json`、`atlas-events-cn.json` |
+| JP/CN 活动索引 | 每次获取 `basic_event.json` | 校验 ID 与名称 | 缓存至 `state/atlas-events-jp.json`、`atlas-events-cn.json`；本地生成 `assets/events/catalog.json` |
 | JP 礼装图片 | 根据精简礼装的 `face` | 检查目标路径 | 已存在则跳过 |
 | runtime skill | 请求全部已发现的依赖 ID | 不用已有技能文件跳过请求 | 每次覆盖 |
 | variants、汇总和验证结果 | 不请求网络 | 扫描当前本地缓存 | 每次覆盖输出 |
@@ -36,6 +36,7 @@
 data:atlas
   ├─ 增量刷新从者、补齐从者图片
   ├─ 增量刷新概念礼装 raw、重建精简数据并补齐图片
+  ├─ 从活动索引生成 JP/CN 活动目录
   ├─ 覆盖下载 runtime skill 依赖
   ├─ 全量重建并汇总 JP/CN variants
   ├─ 运行完整度测试并生成 verification 报告
@@ -43,7 +44,7 @@ data:atlas
 
 resources:sync
   ├─ 重新生成 resources/servants.json
-  └─ 复制 variants 和概念礼装汇总到 resources/
+  └─ 复制 variants、概念礼装汇总和活动目录到 resources/
 ```
 
 `resources:sync` 根据 `assets/` 中的缓存生成和复制资源，再生成形态技能目标差异报告，不访问 Atlas Academy。完整报告会读取已有 `resources/servants_variants.json`，因此 `data:atlas` 面向已有完整数据目录；各步骤输入见 [数据检查与分析报告](../verification/README.md)。

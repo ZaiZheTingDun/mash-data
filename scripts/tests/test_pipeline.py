@@ -164,6 +164,19 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "compact data only"):
             validate_assets(self.root)
 
+    def test_event_catalog_is_in_base_and_patch_packages(self):
+        catalog = {"schemaVersion": 1, "regions": {"JP": [{"id": 1}], "CN": [{"id": 1}]}}
+        write_json(self.root / "assets" / "events" / "catalog.json", catalog)
+        self.assertIn("events/catalog.json", scan_asset_entries(self.root))
+        self.release_base()
+        with zipfile.ZipFile(self.root / "dist" / "assets-release" / "base" / "v1" / "assets-json-v1.zip") as archive:
+            self.assertEqual(json.loads(archive.read("events/catalog.json")), catalog)
+        catalog["regions"]["JP"].append({"id": 2})
+        write_json(self.root / "assets" / "events" / "catalog.json", catalog)
+        prepare(self.root, self.store, "patch")
+        with zipfile.ZipFile(self.root / "dist" / "assets-release" / "patches" / "v1-to-v2.zip") as archive:
+            self.assertEqual(json.loads(archive.read("events/catalog.json")), catalog)
+
     def test_base_and_patch_preserve_history_and_publish_latest_last(self):
         original = (self.root / "assets" / "manifest.json").read_bytes()
         self.release_base()

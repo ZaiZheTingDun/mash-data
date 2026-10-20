@@ -64,7 +64,7 @@ python3 scripts/release.py base
 
 | 分包 | 内容 |
 | --- | --- |
-| `assets-json` | 从者与概念礼装 JSON |
+| `assets-json` | 从者、概念礼装与活动目录 JSON |
 | `servant-images` | 从者图片 |
 | `ce-images` | 概念礼装图片 |
 | `icon-images` | 图标图片 |
@@ -111,7 +111,7 @@ dist/assets-release/
 
 每个 ZIP 带有 `.zip.sha256` 校验文件。基础 ZIP 内含 `pack-manifest.json`，记录文件路径、大小和 SHA-256；补丁 ZIP 内含新增和修改文件、`patch-manifest.json` 及 `deletes.json`。
 
-受管理文件为 `assets/` 下 `servants`、`ces`、`icons`、`mystic-codes`、`skills` 目录中的 JSON 和 PNG/WebP/JPG/JPEG 图片。ZIP 内路径相对于 `assets/`，例如 `assets/servants/1/servant.json` 打包为 `servants/1/servant.json`。
+受管理文件为 `assets/` 下 `servants`、`ces`、`events`、`icons`、`mystic-codes`、`skills` 目录中的 JSON 和 PNG/WebP/JPG/JPEG 图片。ZIP 内路径相对于 `assets/`，例如 `assets/servants/1/servant.json` 打包为 `servants/1/servant.json`。
 
 `servant-raw.json`、`servant-cn-raw.json`、`craft-essence-raw.json`、`craft-essence-cn-raw.json` 和 `.DS_Store` 会被排除。`resources/`、分析报告及 `assets/` 根目录的汇总文件也不属于这组打包目录。raw 排除规则同样适用于补丁、离线包和资源状态清单。
 

@@ -59,6 +59,8 @@ assets/
 │       └── skill_cn.json
 ├── servants_variants.json
 ├── servants_variants_cn.json
+├── events/
+│   └── catalog.json                  # JP/CN 活动目录
 └── craft_essences.json
 ```
 
@@ -79,6 +81,7 @@ JP 从者图片取自 `extraAssets.commands`、`faces` 和 `narrowFigure` 下的
 | `build:variants` | 根据本地 JP/CN 缓存生成每位从者的静态形态 |
 | `combine:variants` | 汇总形态，并向对应槽位追加运行时技能 |
 | `combine:ces` | 从本地 raw 与活动索引重建精简礼装及汇总 |
+| `combine:events` | 从本地 JP/CN 活动索引生成活动目录 |
 | `compact:servants` | 将旧缓存转换为 raw 与精简文件 |
 | `download:skill-icons` | 单独下载技能图标 |
 | `download:mystic-codes` | 单独下载魔术礼装数据与图片 |

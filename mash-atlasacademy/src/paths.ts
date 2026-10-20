@@ -9,6 +9,7 @@ export const CES_DIR = join(ASSETS_ROOT, "ces");
 export const ICONS_DIR = join(ASSETS_ROOT, "icons");
 export const MYSTIC_CODES_DIR = join(ASSETS_ROOT, "mystic-codes");
 export const CRAFT_ESSENCES_FILE = join(ASSETS_ROOT, "craft_essences.json");
+export const EVENTS_CATALOG_FILE = join(ASSETS_ROOT, "events", "catalog.json");
 export const SERVANTS_VARIANTS_FILE = join(ASSETS_ROOT, "servants_variants.json");
 export const SERVANTS_VARIANTS_CN_FILE = join(
   ASSETS_ROOT,
