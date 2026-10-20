@@ -91,11 +91,14 @@ Atlas 的 `nice/servant?lore=true` 响应包含完整剧情、战斗效果和养
 精简文件保留以下可消费字段：
 
 - 从者的标识、名称、职阶、稀有度和基础分类；
+- 基础特性 `traits`、`ascensionAdd.individuality` 中的再临/灵衣特性覆写，以及保留全部生效条件的 `traitAdd`；每个特性保留 `{ id, name }`；
 - 卡面/头像/窄图和灵基图的 URL，以及灵衣对应关系；
 - 技能、宝具的 ID、名称、图标、变体解锁条件、必要的目标类型/选择信息与增量更新依赖 ID；
 - 宝具及从者名称覆写和 `SkillRankUp` 关系。
 
 `classPassive`、`extraPassive` 和 `appendPassive` 不进入精简文件。对尚未转换的旧缓存运行 `npm run atlas:compact-servants`，会先保留为 raw，再生成精简文件。若 raw 已缺失，下一次 `npm start` 会重新请求对应 Atlas 数据补齐。
+
+旧精简文件缺少基础特性、名称、形态覆写或条件特性而 raw 已有对应数据时，正常更新会从 raw 本地重建，无需重新下载。`resources/servants.json` 的 `traits.JP`、`traits.CN` 分别输出对应地区排序、去重后的纯特性 ID 数组；缺少地区数据或特性字段时为 null，已知空列表为 `[]`，国服特性不使用日服回退。汇总文件整体保留缩进换行，仅特性数字数组保持单行，直接用特性 ID 进行条件匹配；名称只保留在精简文件中，沿用 Atlas 原值（如 `alignmentEvil`）。`traitOverrides.JP/CN` 输出再临及灵衣的特性 ID 数组覆写，`traitAdd.JP/CN` 输出带条件的额外特性，其 `trait` 也只保存 ID 数组；这些数据不合并进基础 `traits`。编号、空值和生效规则见 [概念礼装条件所需的从者特性](craft-essences.md#从者形态与条件特性)。
 
 raw 文件不会进入基础资源包、增量补丁或资源状态清单。
 

@@ -69,6 +69,26 @@ npm run resources:sync
 
 午餐时光普通/满破为 2%/10%；午茶时光为 1%/5%，助战为 3%/15%。多个条目不能直接相加：普通和满破可能互相替代，特性与关卡条件也需要由使用方判断。无法解析的牵绊数值会让生成失败。
 
+从者精简文件的 `traits` 保留基础特性的 `{ id, name }`，客户端汇总 `resources/servants.json` 整体保留缩进换行，特性仅保留单行的纯 ID 数组，例如 `traits.JP: [203, 304]`，直接匹配数组中的 ID。精简文件中的名称沿用 Atlas 原值，例如 `{ "id": 304, "name": "alignmentEvil" }`。以“异星之神”（9408800）为例，其 `functvals` 为 304（恶）和 203（星属性），这张礼装在目标从者包含任意一个 ID 时生效。缺少地区特性数据时为 null，不能按“不符合条件”处理。形态覆写及带条件的额外特性见下节；它们不预先合并进基础特性。
+
+### 从者形态与条件特性
+
+从者精简文件还保留 `ascensionAdd.individuality` 和 `traitAdd`。客户端从者汇总新增：
+
+| 字段 | 内容 |
+| --- | --- |
+| `traits.JP/CN` | 基础特性 ID 数组 |
+| `traitOverrides.JP/CN` | `{ ascension, costume }` 形态覆写映射，各形态的列表为纯 ID 数组 |
+| `traitAdd.JP/CN` | 条件特性数组，`trait` 为纯 ID 数组，保留 `idx`、`limitCount`、`condType`、`condId`、`condNum`、`eventId`、`startedAt`、`endedAt` |
+
+缺少地区数据或对应源字段时为 null；已知没有条件特性时为 `[]`，已知没有形态覆写时映射为空。上游提供的空覆写数组也原样保留。
+
+`traitOverrides.ascension` 的键是原始 `limitCount`（通常为 0..4），不是立绘编号或现有 variants 的 `ids`。`traitOverrides.costume` 的键是 `battleCharaId`，不是灵衣内部 ID。精简文件的 `profile.costume[battleCharaId].id` 保留两者对应关系；需要匹配条件特性的灵衣 `limitCount` 时使用该对应关系，不能直接拿 `battleCharaId` 比较。
+
+使用方先确定当前再临/灵衣：存在非空的对应覆写时，使用该完整特性列表；否则使用基础列表。随后按源条件筛选 `traitAdd`，只有形态、关卡、活动及时间等条件满足时才加入相应特性。数据层保留这些条件，不在生成时将它们视作永久特性。
+
+技能 variants 的分组不受特性变化影响：同一技能分组内仍可能有不同特性的再临或灵衣。判断礼装时应使用实际形态；当前形态或必要生效条件未知且可能改变结果时，应保留“无法确定”，不能把所有形态或所有活动特性合并。JP/CN 使用各自的数据，不互相回退。
+
 ### 活动适用关系
 
 `events` 为按 ID 排序、去重的 `{ id, name }` 数组，只读取以下明确来源：

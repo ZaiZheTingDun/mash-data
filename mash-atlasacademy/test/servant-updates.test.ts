@@ -1,6 +1,6 @@
 import "./setup-data-root.ts";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -62,6 +62,7 @@ test("compacts servant responses without losing cache consumers' fields", () => 
     id: 100,
     collectionNo: 1,
     name: "test",
+    traits: [{ id: 304, name: "alignmentEvil" }, { id: 203, name: "attributeStar" }],
     profile: {
       lore: { huge: "discard" },
       costume: {
@@ -124,6 +125,7 @@ test("compacts servant responses without losing cache consumers' fields", () => 
     id: 100,
     collectionNo: 1,
     name: "test",
+    traits: [{ id: 304, name: "alignmentEvil" }, { id: 203, name: "attributeStar" }],
     profile: { costume: { "10": { id: 3, battleCharaId: 10, name: "costume" } } },
     extraAssets: {
       commands: { ascension: { "1": "command-url" } },
@@ -270,6 +272,41 @@ test("force refresh overwrites valid JSON while normal loading reuses it", async
     name: "new",
     extraPassive: [{ id: 2 }],
   });
+});
+
+test("old JP/CN compact caches missing traits or names rebuild from raw without a network refresh", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "mash-servant-traits-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "1"));
+  for (const region of ["JP", "CN"] as const) {
+    const stem = region === "JP" ? "servant" : "servant-cn";
+    const compactPath = join(root, "1", `${stem}.json`);
+    const raw = { ...servant(1), traits: [{ id: region === "JP" ? 304 : 203, name: "source name" }] };
+    await writeFile(compactPath, JSON.stringify(compactServant(servant(1))));
+    await writeFile(join(root, "1", `${stem}-raw.json`), JSON.stringify(raw));
+    const before = await inspectServantCache(region, [1], root);
+    assert.deepEqual([...before.missing], [1]);
+    assert.equal(before.invalid.size, 0);
+    const result = await loadOrFetchServant("test", region, 1, compactPath, {
+      fetcher: async () => { throw new Error("should rebuild locally"); },
+    });
+    assert.equal(result.refreshed, false);
+    assert.deepEqual(result.data.traits, [{ id: region === "JP" ? 304 : 203, name: "source name" }]);
+    const after = await inspectServantCache(region, [1], root);
+    assert.equal(after.missing.size, 0);
+    assert.equal(after.valid.length, 1);
+    await writeFile(compactPath, JSON.stringify({
+      ...result.data, traits: result.data.traits?.map((trait) => ({ id: trait.id })),
+    }));
+    const idOnly = await inspectServantCache(region, [1], root);
+    assert.deepEqual([...idOnly.missing], [1]);
+    const named = await loadOrFetchServant("test", region, 1, compactPath, {
+      fetcher: async () => { throw new Error("should restore names locally"); },
+    });
+    assert.equal(named.refreshed, false);
+    assert.deepEqual(named.data.traits, raw.traits);
+    assert.deepEqual(JSON.parse(await readFile(join(root, "1", `${stem}-raw.json`), "utf8")), raw);
+  }
 });
 
 test("rebuilds a missing compact file from the raw cache without fetching", async () => {
@@ -576,4 +613,66 @@ test("does not download or advance when the target hash is absent from Changes",
 
   assert.equal(downloads, 0);
   assert.equal(writes, 0);
+});
+
+test("trait projections retain separate ascension/costume lists and all addition conditions", () => {
+  const base = [{ id: 201, name: "attributeEarth" }, { id: 303, name: "alignmentGood" }];
+  const evil = [{ id: 304, name: "alignmentEvil" }];
+  const conditional = {
+    idx: 100, trait: [{ id: 2919, name: "bunnyServant", unused: "discard" }],
+    limitCount: 3, condType: "questClear", condId: 123, condNum: 1,
+    eventId: 456, startedAt: 1000, endedAt: 2000, unused: "discard",
+  };
+  const compact = compactServant({
+    ...servant(1), traits: base, traitAdd: [conditional],
+    ascensionAdd: {
+      overWriteTDName: { ascension: { "3": "NP name" } },
+      individuality: { ascension: { "0": [], "1": evil, "3": base }, costume: { "100130": evil } },
+      unused: "discard",
+    },
+  });
+  assert.deepEqual(compact.traits, base);
+  assert.deepEqual(compact.ascensionAdd, {
+    overWriteTDName: { ascension: { "3": "NP name" } },
+    individuality: { ascension: { "0": [], "1": evil, "3": base }, costume: { "100130": evil } },
+  });
+  assert.deepEqual(compact.traitAdd, [{
+    idx: 100, trait: [{ id: 2919, name: "bunnyServant" }],
+    limitCount: 3, condType: "questClear", condId: 123, condNum: 1,
+    eventId: 456, startedAt: 1000, endedAt: 2000,
+  }]);
+  assert.throws(() => compactServant({ ...servant(1), traitAdd: [{ trait: base } as never] }), /Invalid servant trait condition/);
+  assert.throws(() => compactServant({ ...servant(1), ascensionAdd: { individuality: { ascension: { "3": null } } } }), /Invalid servant traits/);
+});
+
+test("named trait caches missing form overrides or additions are upgraded offline in JP and CN", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "mash-servant-form-traits-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "1"));
+  for (const region of ["JP", "CN"] as const) {
+    const stem = region === "JP" ? "servant" : "servant-cn";
+    const path = join(root, "1", `${stem}.json`);
+    const old = { ...servant(1), traits: [{ id: 201, name: "attributeEarth" }] };
+    const raw = {
+      ...old,
+      ascensionAdd: { individuality: { ascension: { "3": [{ id: region === "JP" ? 304 : 203, name: "regional trait" }] }, costume: {} } },
+      traitAdd: [{ idx: 1, trait: [{ id: 2919, name: "bunnyServant" }], limitCount: -1,
+        condType: "none", condId: 0, condNum: 0, eventId: 456, startedAt: 1000, endedAt: 2000 }],
+    };
+    await writeFile(path, JSON.stringify(compactServant(old)));
+    await writeFile(join(root, "1", `${stem}-raw.json`), JSON.stringify(raw));
+    assert.deepEqual([...(await inspectServantCache(region, [1], root)).missing], [1]);
+    const loaded = await loadOrFetchServant("test", region, 1, path, {
+      fetcher: async () => { throw new Error("form traits must rebuild from raw"); },
+    });
+    assert.equal(loaded.refreshed, false);
+    assert.deepEqual(loaded.data.traits, old.traits);
+    assert.deepEqual(loaded.data.ascensionAdd, raw.ascensionAdd);
+    assert.deepEqual(loaded.data.traitAdd, raw.traitAdd);
+    assert.equal((await inspectServantCache(region, [1], root)).valid.length, 1);
+    const missingAddition = { ...loaded.data };
+    delete missingAddition.traitAdd;
+    await writeFile(path, JSON.stringify(missingAddition));
+    assert.deepEqual([...(await inspectServantCache(region, [1], root)).missing], [1]);
+  }
 });

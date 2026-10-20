@@ -3,7 +3,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileExists, readJson, writeJson } from "./fs-utils.js";
 import { SERVANTS_DIR } from "./paths.js";
-import type { NiceServant } from "./types.js";
+import type { NiceServant, ServantTrait, ServantTraitAddition, ServantTraitOverrides } from "./types.js";
 import { classifySkillTargeting } from "./skill-targeting.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -154,6 +154,62 @@ function compactNoblePhantasms(value: unknown): JsonRecord[] | undefined {
   });
 }
 
+function compactTraits(value: unknown): ServantTrait[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error("Invalid servant traits");
+  return value.map((trait: unknown) => {
+    if (!isRecord(trait) || typeof trait.id !== "number" || !Number.isInteger(trait.id)) {
+      throw new Error("Invalid servant trait ID");
+    }
+    return { id: trait.id, ...(typeof trait.name === "string" ? { name: trait.name } : {}) };
+  });
+}
+
+function compactTraitOverrides(value: unknown): ServantTraitOverrides | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error("Invalid servant trait overrides");
+  const result: ServantTraitOverrides = {};
+  for (const scope of ["ascension", "costume"] as const) {
+    if (value[scope] === undefined) continue;
+    if (!isRecord(value[scope])) throw new Error(`Invalid ${scope} trait overrides`);
+    result[scope] = Object.fromEntries(Object.entries(value[scope]).map(([id, traits]) => {
+      const projected = compactTraits(traits);
+      if (!projected) throw new Error(`Missing traits for ${scope} ${id}`);
+      return [id, projected];
+    }));
+  }
+  return result;
+}
+
+function compactTraitAdditions(value: unknown): ServantTraitAddition[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error("Invalid servant trait additions");
+  return value.map((addition: unknown) => {
+    if (!isRecord(addition)) throw new Error("Invalid servant trait addition");
+    const trait = compactTraits(addition.trait);
+    if (!trait) throw new Error("Missing conditional servant traits");
+    if (typeof addition.condType !== "string") throw new Error("Invalid servant trait condition type");
+    const number = (field: string): number => {
+      const value = addition[field];
+      if (typeof value !== "number" || !Number.isInteger(value)) {
+        throw new Error(`Invalid servant trait condition ${field}`);
+      }
+      return value;
+    };
+    return {
+      idx: number("idx"),
+      limitCount: number("limitCount"),
+      condType: addition.condType,
+      condId: number("condId"),
+      condNum: number("condNum"),
+      eventId: number("eventId"),
+      startedAt: number("startedAt"),
+      endedAt: number("endedAt"),
+      trait,
+    };
+  });
+}
+
 function compactAscensionAdd(value: unknown): JsonRecord | undefined {
   if (!isRecord(value)) return undefined;
   const result: JsonRecord = {};
@@ -162,6 +218,8 @@ function compactAscensionAdd(value: unknown): JsonRecord | undefined {
     if (!isRecord(overrides)) continue;
     result[field] = pick(overrides, ["ascension", "costume"]);
   }
+  const individuality = compactTraitOverrides(value.individuality);
+  if (individuality) result.individuality = individuality;
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
@@ -174,6 +232,10 @@ export function compactServant(value: NiceServant): NiceServant {
   const source = value as JsonRecord;
   const result = pick(source, ROOT_FIELDS);
   result.profile = compactProfile(source.profile);
+  const traits = compactTraits(value.traits);
+  if (traits) result.traits = traits;
+  const traitAdd = compactTraitAdditions(value.traitAdd);
+  if (traitAdd) result.traitAdd = traitAdd;
 
   const extraAssets = compactExtraAssets(source.extraAssets);
   const ascensionAdd = compactAscensionAdd(source.ascensionAdd);
@@ -188,6 +250,20 @@ export function compactServant(value: NiceServant): NiceServant {
   if (script && Object.keys(script).length > 0) result.script = script;
 
   return result as NiceServant;
+}
+
+export function hasCurrentServantTraits(cached: NiceServant, raw: NiceServant): boolean {
+  const rawAscensionAdd = isRecord(raw.ascensionAdd) ? raw.ascensionAdd : {};
+  const cachedAscensionAdd = isRecord(cached.ascensionAdd) ? cached.ascensionAdd : {};
+  return JSON.stringify({
+    traits: cached.traits,
+    individuality: cachedAscensionAdd.individuality,
+    traitAdd: cached.traitAdd,
+  }) === JSON.stringify({
+    traits: compactTraits(raw.traits),
+    individuality: compactTraitOverrides(rawAscensionAdd.individuality),
+    traitAdd: compactTraitAdditions(raw.traitAdd),
+  });
 }
 
 export interface CompactAllServantsResult {

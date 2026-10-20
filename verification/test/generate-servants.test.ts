@@ -196,3 +196,85 @@ test("resource generation includes ascension-overridden Noble Phantasm names", a
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 });
+
+test("resource traits use inline ID arrays within formatted JSON, preserving empty sets and missing CN", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "mash-servant-traits-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const servantsDir = path.join(root, "servants");
+  const output = path.join(root, "servants.json");
+  for (const collectionNo of [1, 2, 3]) {
+    const dir = path.join(servantsDir, String(collectionNo));
+    await mkdir(dir, { recursive: true });
+    const base = { id: collectionNo * 100, collectionNo, name: "test", rarity: 5, noblePhantasms: [] };
+    await writeFile(path.join(dir, "servant.json"), JSON.stringify({
+      ...base, traits: collectionNo === 3 ? [] : [
+        { id: 304, name: "alignmentEvil" }, { id: 203, name: "attributeStar" }, { id: 304, name: "alignmentEvil" },
+      ],
+    }));
+    if (collectionNo === 1) await writeFile(path.join(dir, "servant-cn.json"), JSON.stringify({
+      ...base, traits: [{ id: 203, name: "CN source trait" }],
+    }));
+  }
+  await execFileAsync(process.execPath, [path.join(repoRoot, "scripts/generate-servants.ts"), output, servantsDir], { cwd: repoRoot });
+  const text = await readFile(output, "utf8");
+  assert.ok(text.startsWith("[\n  {\n"));
+  assert.ok(text.endsWith("\n"));
+  assert.ok(text.includes('"JP": [203, 304]'));
+  assert.ok(text.includes('"CN": [203]'));
+  const generated = JSON.parse(text);
+  assert.ok(Array.isArray(generated));
+  assert.ok(generated.every((entry: Record<string, unknown>) => !Object.hasOwn(entry, "traitIds")));
+  const jp = [203, 304];
+  assert.deepEqual(generated.map((entry: { traits: unknown }) => entry.traits), [
+    { JP: jp, CN: [203] },
+    { JP: jp, CN: null },
+    { JP: [], CN: null },
+  ]);
+});
+
+test("resource form trait overrides retain source numbering and conditional additions without merging into base", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "mash-form-traits-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const servantsDir = path.join(root, "servants");
+  const output = path.join(root, "servants.json");
+  const base = [{ id: 201, name: "attributeEarth" }];
+  const evil = [{ id: 304, name: "alignmentEvil" }];
+  const star = [{ id: 203, name: "attributeStar" }];
+  const jpOverrides = { ascension: { "0": [], "1": evil, "3": base }, costume: { "100130": star } };
+  const cnOverrides = { ascension: { "3": star }, costume: {} };
+  const conditional = { idx: 1, trait: [{ id: 2919, name: "bunnyServant" }], limitCount: 11,
+    condType: "questClear", condId: 123, condNum: 1, eventId: 456, startedAt: 1000, endedAt: 2000 };
+  for (const collectionNo of [1, 2, 3]) {
+    const dir = path.join(servantsDir, String(collectionNo));
+    await mkdir(dir, { recursive: true });
+    const common = { id: collectionNo * 100, collectionNo, name: "test", rarity: 5, traits: base, noblePhantasms: [] };
+    await writeFile(path.join(dir, "servant.json"), JSON.stringify({
+      ...common,
+      ...(collectionNo === 1 ? {
+        ascensionAdd: { individuality: jpOverrides }, traitAdd: [conditional],
+        profile: { costume: { "100130": { id: 11, battleCharaId: 100130 } } },
+      } : collectionNo === 2 ? { ascensionAdd: { individuality: { ascension: {}, costume: {} } }, traitAdd: [] } : {}),
+    }));
+    if (collectionNo === 1) await writeFile(path.join(dir, "servant-cn.json"), JSON.stringify({
+      ...common, ascensionAdd: { individuality: cnOverrides }, traitAdd: [],
+    }));
+  }
+  await execFileAsync(process.execPath, [path.join(repoRoot, "scripts/generate-servants.ts"), output, servantsDir], { cwd: repoRoot });
+  const text = await readFile(output, "utf8");
+  assert.ok(text.includes('"1": [304]'));
+  assert.ok(text.includes('"100130": [203]'));
+  assert.ok(text.includes('"trait": [2919]'));
+  const generated = JSON.parse(text);
+  assert.deepEqual(generated.map((entry: { traits: { JP: unknown } }) => entry.traits.JP), [[201], [201], [201]]);
+  assert.deepEqual(generated.map((entry: { traitOverrides: unknown }) => entry.traitOverrides), [
+    { JP: { ascension: { "0": [], "1": [304], "3": [201] }, costume: { "100130": [203] } },
+      CN: { ascension: { "3": [203] }, costume: {} } },
+    { JP: { ascension: {}, costume: {} }, CN: null },
+    { JP: null, CN: null },
+  ]);
+  assert.deepEqual(generated.map((entry: { traitAdd: unknown }) => entry.traitAdd), [
+    { JP: [{ ...conditional, trait: [2919] }], CN: [] },
+    { JP: [], CN: null },
+    { JP: null, CN: null },
+  ]);
+});

@@ -2,6 +2,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { requireDataRoot } from "../shared/data-paths.ts";
+import type { ServantTrait, ServantTraitAddition, ServantTraitOverrides } from "../mash-atlasacademy/src/types.ts";
 
 interface NameOverrides {
   ascension?: Record<string, unknown>;
@@ -23,9 +24,12 @@ interface ServantInput {
   className?: unknown;
   type?: string;
   rarity: number;
+  traits?: ServantTrait[];
+  traitAdd?: ServantTraitAddition[];
   noblePhantasms?: NoblePhantasmInput[];
   profile?: { costume?: Record<string, { id: number }> };
   ascensionAdd?: {
+    individuality?: ServantTraitOverrides;
     overWriteTDName?: NameOverrides;
     overWriteTDRuby?: NameOverrides;
     overWriteServantName?: NameOverrides;
@@ -47,6 +51,13 @@ interface ServantNameOverride {
   nameCN: string;
 }
 
+interface ResourceTraitOverrides {
+  ascension?: Record<string, number[]>;
+  costume?: Record<string, number[]>;
+}
+
+type ResourceTraitAddition = Omit<ServantTraitAddition, "trait"> & { trait: number[] };
+
 interface ResourceServant {
   id: number;
   collectionNo: number;
@@ -56,6 +67,9 @@ interface ResourceServant {
   className: string;
   type?: string;
   rarity: number;
+  traits: { JP: number[] | null; CN: number[] | null };
+  traitOverrides: { JP: ResourceTraitOverrides | null; CN: ResourceTraitOverrides | null };
+  traitAdd: { JP: ResourceTraitAddition[] | null; CN: ResourceTraitAddition[] | null };
   noblePhantasms: ResourceNoblePhantasm[];
   overWriteServantNames?: ServantNameOverride[];
 }
@@ -319,6 +333,26 @@ function buildOverWriteServantNames(jpServant: ServantInput, cnServant: ServantI
   return result;
 }
 
+function resourceTraits(traits: ServantTrait[] | undefined): number[] | null {
+  if (!Array.isArray(traits)) return null;
+  return [...new Set(traits.map((trait) => trait.id))].sort((a, b) => a - b);
+}
+
+function resourceTraitOverrides(overrides: ServantTraitOverrides | undefined): ResourceTraitOverrides | null {
+  if (!overrides) return null;
+  const result: ResourceTraitOverrides = {};
+  for (const scope of ["ascension", "costume"] as const) {
+    if (overrides[scope]) result[scope] = Object.fromEntries(
+      Object.entries(overrides[scope]).map(([id, traits]) => [id, resourceTraits(traits) ?? []]),
+    );
+  }
+  return result;
+}
+
+function resourceTraitAdditions(additions: ServantTraitAddition[] | undefined): ResourceTraitAddition[] | null {
+  return additions?.map((addition) => ({ ...addition, trait: resourceTraits(addition.trait) ?? [] })) ?? null;
+}
+
 function buildEntry(jpServant: ServantInput, cnServant: ServantInput | undefined): ResourceServant {
   const collectionNo = jpServant.collectionNo;
   const id = jpServant.id;
@@ -326,6 +360,8 @@ function buildEntry(jpServant: ServantInput, cnServant: ServantInput | undefined
   const nameCn = asNonEmptyString(cnServant?.name) ?? nameJp;
   const className = asNonEmptyString(jpServant.className) ?? "";
   const rarity = Number.isInteger(jpServant.rarity) ? jpServant.rarity : 0;
+  const traitsJP = resourceTraits(jpServant.traits);
+  const traitsCN = resourceTraits(cnServant?.traits);
   const nps = buildNoblePhantasms(jpServant, cnServant);
   const overWriteServantNames = buildOverWriteServantNames(
     jpServant,
@@ -341,6 +377,15 @@ function buildEntry(jpServant: ServantInput, cnServant: ServantInput | undefined
     className,
     type: jpServant.type,
     rarity,
+    traits: { JP: traitsJP, CN: traitsCN },
+    traitOverrides: {
+      JP: resourceTraitOverrides(jpServant.ascensionAdd?.individuality),
+      CN: resourceTraitOverrides(cnServant?.ascensionAdd?.individuality),
+    },
+    traitAdd: {
+      JP: resourceTraitAdditions(jpServant.traitAdd),
+      CN: resourceTraitAdditions(cnServant?.traitAdd),
+    },
     noblePhantasms: nps,
   };
   if (overWriteServantNames.length > 0) {
@@ -366,7 +411,13 @@ for (const collectionNo of collectionNos) {
   servants.push(buildEntry(jpServant, cnServant));
 }
 
-await writeFile(outputPath, `${JSON.stringify(servants, null, 2)}\n`, "utf8");
+// Keep the file readable while trait ID lists stay on one line. These keys
+// identify base regional lists, conditional traits, and numeric form IDs.
+const outputJson = JSON.stringify(servants, null, 2).replace(
+  /("(?:JP|CN|trait|\d+)": )\[\n\s+(-?\d+(?:,\n\s+-?\d+)*)\n\s*\]/g,
+  (_match: string, key: string, numbers: string) => `${key}[${numbers.split(/,\s*/).join(", ")}]`,
+);
+await writeFile(outputPath, `${outputJson}\n`, "utf8");
 
 console.log(`Generated ${servants.length} servants -> ${outputPath}`);
 if (missingCn.length > 0) {
