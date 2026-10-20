@@ -22,6 +22,10 @@ export interface BondBonus {
 
 export type BondBonusSummary = Pick<BondBonus, "skillId" | "functionId" | "limitBreak" | "values" | "supportValues">;
 
+/** QP uses the same parameter/condition shape as bond rewards. */
+export type QpBonus = BondBonus;
+export type QpBonusSummary = BondBonusSummary;
+
 export interface EventBonus {
   eventId: number;
   type: "dropCount" | "dropAmountPercent" | "points" | "damage" | "enemyAppearance" | "fortificationPoints";
@@ -49,12 +53,14 @@ export interface CraftEssenceSummary {
   bondEquipOwner: number | null;
   valentineEquipOwner: number | null;
   bondBonuses: BondBonusSummary[];
+  qpBonuses: QpBonusSummary[];
   eventBonuses: EventBonusSummary[];
   events: Array<{ id: number }>;
 }
 
 export interface CompactCraftEssence extends CraftEssenceSummary {
   bondBonuses: BondBonus[];
+  qpBonuses: QpBonus[];
   eventBonuses: EventBonus[];
   events: Array<{ id: number; name: string | null }>;
   schemaVersion: 1;
@@ -115,15 +121,15 @@ export function validateEventIndex(value: unknown): asserts value is BasicEvent[
 }
 
 function bonusValues(value: unknown): BondBonusValue[] {
-  const vals = records(value, "bond bonus values");
-  if (vals.length === 0) throw new Error("Bond bonus has no values");
+  const vals = records(value, "reward bonus values");
+  if (vals.length === 0) throw new Error("Reward bonus has no values");
   return vals.map((val) => {
     for (const key of ["RateCount", "AddCount"]) {
       if (val[key] !== undefined && (typeof val[key] !== "number" || !Number.isFinite(val[key]))) {
-        throw new Error(`Invalid bond bonus ${key}`);
+        throw new Error(`Invalid reward bonus ${key}`);
       }
     }
-    if (val.RateCount === undefined && val.AddCount === undefined) throw new Error("Bond bonus has no RateCount or AddCount");
+    if (val.RateCount === undefined && val.AddCount === undefined) throw new Error("Reward bonus has no RateCount or AddCount");
     const { RateCount, AddCount, ...conditions } = val;
     return {
       percent: typeof RateCount === "number" ? RateCount / 10 : null,
@@ -172,6 +178,7 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
   const eventIds = new Set<number>();
   const addEvent = (id: unknown) => { if (positiveId(id)) eventIds.add(id); };
   const bondBonuses: BondBonus[] = [];
+  const qpBonuses: QpBonus[] = [];
   const eventBonuses: EventBonus[] = [];
 
   for (const skill of raw.skills) {
@@ -231,12 +238,14 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
           }
         }
       }
-      if (func.funcType !== "servantFriendshipUp") continue;
-      if (!positiveId(func.funcId)) throw new Error("Invalid bond bonus function ID");
+      const isBond = func.funcType === "servantFriendshipUp";
+      const isQp = func.funcType === "qpDropUp" || func.funcType === "qpUp";
+      if (!isBond && !isQp) continue;
+      if (!positiveId(func.funcId)) throw new Error("Invalid reward bonus function ID");
       if (typeof skill.condLimitCount !== "number" || !Number.isInteger(skill.condLimitCount) || skill.condLimitCount < 0) {
-        throw new Error("Invalid bond bonus limit break condition");
+        throw new Error("Invalid reward bonus limit break condition");
       }
-      bondBonuses.push({
+      (isBond ? bondBonuses : qpBonuses).push({
         skillId: skill.id as number,
         functionId: func.funcId,
         limitBreak: skill.condLimitCount,
@@ -267,6 +276,7 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
     bondEquipOwner: raw.bondEquipOwner ?? null,
     valentineEquipOwner: raw.valentineEquipOwner ?? null,
     bondBonuses,
+    qpBonuses,
     eventBonuses,
     events: [...eventIds].sort((a, b) => a - b).map((id) => ({ id, name: eventNames.get(id) ?? null })),
   };
@@ -277,6 +287,9 @@ export function craftEssenceSummary(ce: CompactCraftEssence): CraftEssenceSummar
     bondEquipOwner: ce.bondEquipOwner,
     valentineEquipOwner: ce.valentineEquipOwner,
     bondBonuses: ce.bondBonuses.map(({ skillId, functionId, limitBreak, values, supportValues }) => ({
+      skillId, functionId, limitBreak, values, supportValues,
+    })),
+    qpBonuses: ce.qpBonuses.map(({ skillId, functionId, limitBreak, values, supportValues }) => ({
       skillId, functionId, limitBreak, values, supportValues,
     })),
     eventBonuses: ce.eventBonuses.map(({ detail: _detail, conditions: _conditions, group: _group, ...bonus }) => bonus),

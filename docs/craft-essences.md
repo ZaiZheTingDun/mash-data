@@ -36,6 +36,7 @@ npm run resources:sync
       "bondEquipOwner": null,
       "valentineEquipOwner": null,
       "bondBonuses": [],
+      "qpBonuses": [],
       "eventBonuses": [],
       "events": []
     },
@@ -74,6 +75,12 @@ npm run resources:sync
 午餐时光普通/满破为 2%/10%；午茶时光为 1%/5%，助战为 3%/15%。多个条目不能直接相加：普通和满破可能互相替代，特性与关卡条件也需要由使用方判断。无法解析的牵绊数值会让生成失败。
 
 从者精简文件的 `traits` 保留基础特性的 `{ id, name }`，客户端汇总 `resources/servants.json` 整体保留缩进换行，特性仅保留单行的纯 ID 数组，例如 `traits.JP: [203, 304]`，直接匹配数组中的 ID。精简文件中的名称沿用 Atlas 原值，例如 `{ "id": 304, "name": "alignmentEvil" }`。以“异星之神”（9408800）为例，其 `functvals` 为 304（恶）和 203（星属性），这张礼装在目标从者包含任意一个 ID 时生效。缺少地区特性数据时为 null，不能按“不符合条件”处理。形态覆写及带条件的额外特性见下节；它们不预先合并进基础特性。
+
+### 量子（QP）加成
+
+`qpBonuses` 从 `qpDropUp`（掉落 QP 提升）和 `qpUp`（结算 QP 增量）提取，结构与 `bondBonuses` 相同。保留普通／满破、助战专用参数和活动条件：`RateCount / 10` 写入 `percent`，`AddCount` 写入 `flat`。例如贝拉·丽莎普通／满破为 1%／5%，助战为 3%／15%。
+
+单张文件保留完整说明与条件；汇总仅保存技能／函数 ID、`limitBreak`、`values`、`supportValues`。数据层同时保留百分比和固定值，客户端推荐可只选 `percent > 0`；带 `conditions.EventId` 的加成仅在对应地区活动有效期内推荐。没有 QP 加成为 `[]`，旧精简文件应通过 `combine:ces` 从 raw 重建后再发布。
 
 ### 从者形态与条件特性
 

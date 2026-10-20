@@ -167,3 +167,43 @@ test("invalid full responses and unsupported bonus values fail instead of report
   const raw = equip(1, { skills: [{ ...bondSkill(1, 0, 50), functions: [{ funcId: 1, funcType: "servantFriendshipUp", svals: [{}] }] }] });
   assert.throws(() => compactCraftEssence(raw), /no RateCount or AddCount/);
 });
+
+
+test("QP bonuses preserve normal, MLB, support and flat values without treating other rewards as QP", () => {
+  const qpSkill = (id: number, limitBreak: number, rate: number, support: number) => ({
+    ...bondSkill(id, limitBreak, rate, support),
+    detail: "QP drop bonus",
+    functions: [{ funcId: 98, funcType: "qpDropUp", svals: [{ RateCount: rate }], followerVals: [{ RateCount: support }] }],
+  });
+  const full = compactCraftEssence(equip(988, { skills: [
+    qpSkill(1, 0, 10, 30), qpSkill(2, 4, 50, 150),
+    { id: 3, condLimitCount: 0, detail: "QP +2025", functions: [{ funcId: 91, funcType: "qpUp", svals: [{ AddCount: 2025 }] }] },
+    bondSkill(4, 0, 20),
+  ] }));
+  assert.equal(full.qpBonuses.length, 3);
+  assert.equal(full.bondBonuses.length, 1);
+  assert.deepEqual(full.qpBonuses.slice(0, 2).map((bonus) => [bonus.limitBreak, bonus.values[0]?.percent, bonus.supportValues?.[0]?.percent]), [
+    [0, 1, 3], [4, 5, 15],
+  ]);
+  assert.equal(full.qpBonuses[2]?.values[0]?.flat, 2025);
+  assert.equal(full.qpBonuses[2]?.values[0]?.percent, null);
+  const summary = craftEssenceSummary(full).qpBonuses[1]!;
+  assert.equal(summary.values[0]?.percent, 5);
+  assert.equal(summary.supportValues?.[0]?.percent, 15);
+  assert.equal("detail" in summary, false);
+  assert.equal("conditions" in summary, false);
+  assert.equal(full.qpBonuses[1]?.detail, "QP drop bonus");
+});
+
+test("QP value conditions retain event restrictions and malformed values fail extraction", () => {
+  const full = compactCraftEssence(equip(1, { skills: [{ id: 1, condLimitCount: 4,
+    functions: [{ funcId: 98, funcType: "qpDropUp", svals: [{ RateCount: 125, EventId: 80627 }] }],
+  }] }));
+  assert.deepEqual(full.qpBonuses[0]?.values, [{ percent: 12.5, flat: null, conditions: { EventId: 80627 } }]);
+  assert.deepEqual(full.events, [{ id: 80627, name: null }]);
+  const broken = equip(1, { skills: [{ id: 1, condLimitCount: 0,
+    functions: [{ funcId: 98, funcType: "qpDropUp", svals: [{}] }],
+  }] });
+  assert.throws(() => compactCraftEssence(broken), /no RateCount or AddCount/);
+  assert.deepEqual(compactCraftEssence(equip(1)).qpBonuses, []);
+});
