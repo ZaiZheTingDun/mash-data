@@ -158,10 +158,11 @@ test("combiner rebuilds from raw, separates regions, marks CN missing, and leave
   assert.equal(result[0]?.name_cn, "CN name");
   assert.equal(result[0]?.regions.JP?.bondBonuses[0]?.values[0]?.percent, 2);
   assert.equal(result[0]?.regions.CN?.bondBonuses[0]?.values[0]?.percent, 1);
-  assert.deepEqual(result[0]?.regions.CN?.events, [{ id: 10, name: "CN event" }]);
+  assert.deepEqual(result[0]?.regions.CN?.events, [{ id: 10 }]);
   assert.equal(result[1]?.regions.CN, null);
   assert.deepEqual(result[1]?.regions.JP?.events, []);
   const before = await readFile(options.output, "utf8");
+  assert.equal(before.split("\n").length, 4); // brackets plus one line per CE
   await writeJsonAtomic(craftEssencePaths("CN", 2, paths.cesDir).compact, { id: 1 });
   await assert.rejects(combineCraftEssences(options), /Missing full raw cache/);
   assert.equal(await readFile(options.output, "utf8"), before);

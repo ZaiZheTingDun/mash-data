@@ -157,7 +157,7 @@ class PipelineTests(unittest.TestCase):
             validate_assets(self.root)
         compact = {"id": 1, "collectionNo": 1, "schemaVersion": 1,
                    "bondEquipOwner": None, "valentineEquipOwner": None,
-                   "bondBonuses": [], "events": []}
+                   "bondBonuses": [], "eventBonuses": [], "events": []}
         write_json(path, compact)
         validate_assets(self.root)
         write_json(path, {**compact, "profile": {"private": "lore"}})

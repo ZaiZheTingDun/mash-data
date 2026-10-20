@@ -26,7 +26,7 @@ npm run resources:sync
 
 ## 汇总格式
 
-`craft_essences.json` 仍然是按 `collectionNo` 排序的数组，保留原有 `id`、`collectionNo`、`name`、`name_cn`、`rarity`、`flag`、`flags`。新增字段为：
+`craft_essences.json` 仍然是按 `collectionNo` 排序的数组，每张礼装占一行以减少文件大小，同时保留可按礼装查看的差异。保留原有 `id`、`collectionNo`、`name`、`name_cn`、`rarity`、`flag`、`flags`。新增字段为：
 
 ```json
 {
@@ -35,6 +35,7 @@ npm run resources:sync
       "bondEquipOwner": null,
       "valentineEquipOwner": null,
       "bondBonuses": [],
+      "eventBonuses": [],
       "events": []
     },
     "CN": null
@@ -42,7 +43,7 @@ npm run resources:sync
 }
 ```
 
-`regions.CN: null` 表示没有国服完整数据。地区对象存在且 `events: []` 表示当前 raw 没有提供明确活动关联，不能据此认定该礼装从未参与活动。JP/CN 独立提取，不使用日服效果填充国服缺失数据。如果仅有 CN raw，顶层基础信息取 CN 数据，`regions.JP` 为 null。
+`regions.CN: null` 表示没有国服完整数据。地区对象存在且 `events: []` 表示当前 raw 没有提供明确活动关联，不能据此认定该礼装从未参与活动。汇总的 `events` 只保留 `{ id }`；活动名称保存在单张礼装文件的 `events` 中。JP/CN 独立提取，不使用日服效果填充国服缺失数据。如果仅有 CN raw，顶层基础信息取 CN 数据，`regions.JP` 为 null。顶层 `name`、`name_cn` 供现有 App 的礼装选择与搜索使用。
 
 ### 从者归属
 
@@ -55,6 +56,8 @@ npm run resources:sync
 ### 牵绊点数加成
 
 只从 `funcType: servantFriendshipUp` 提取 `bondBonuses`，每项对应一个技能的一个函数：
+
+汇总只保留技能/函数 ID、`limitBreak`、`values` 和 `supportValues`；完整技能说明与函数级生效条件在单张礼装文件中。参数组自身的 `conditions`（例如 `EventId`）仍保留在汇总，便于按活动筛选。
 
 | 字段 | 含义 |
 | --- | --- |
@@ -91,7 +94,15 @@ npm run resources:sync
 
 ### 活动适用关系
 
-`events` 为按 ID 排序、去重的 `{ id, name }` 数组，只读取以下明确来源：
+`eventBonuses` 保存明确关联到活动的礼装效果，每条对应一个技能函数参数和一个活动 ID。可按 `eventId` 对照同地区的 `events` 获取活动名；`limitBreak` 区分普通（0）和满破（4），同一效果的两档不能相加。`type` 包括 `dropCount`（掉落数量）、`dropAmountPercent`（掉落量百分比）、`points`（活动点数）、`damage`（活动伤害）、`enemyAppearance`（敌人出现率）和 `fortificationPoints`（活动进度）。`functionType`、`buffType` 保留 Atlas 的效果类型。
+
+汇总中的每条 `eventBonuses` 只保留 `eventId`、类型、源技能/函数 ID、`limitBreak`、目标 ID、数值和动态标记。完整的 `detail`、`conditions` 与显示分组名称/图标在 `assets/ces/{collectionNo}/craft-essence[-cn].json` 中；需要显示加成详情或判断关卡、目标等生效条件时，按汇总的 `collectionNo` 读取对应地区的单张文件。两层数据均从同一份 raw 生成。
+
+`flat` 为固定增量，`percent` 为百分数，例如 300 的 `RateCount` 或 1000 的伤害 `Value` 分别生成 30 和 100。活动点数决定威力的动态效果设置 `dynamic: true`、`percent: null`，需根据关卡状态计算。`targetId` 是源 `Individuality` ID，不是道具 ID；无法从 raw 稳定解析的材料名称不猜测。单张文件中的 `detail` 是本地区技能说明，`group` 保存对应活动的显示名称和图标，`conditions` 保存技能绑定、目标及其余参数，使用方需要按实际条件判断生效。JP/CN 各自提取。
+
+加成的活动 ID 优先取参数里的 `EventId`，没有时取该礼装的技能绑定，最后才使用 `funcGroup` 的活动 ID。`funcGroup` 可能包含历史活动或复刻的显示配置；当参数已经给出 ID 时，不把其他显示配置当作同一条加成的适用活动。原有 `events` 仍汇集所有明确出现的活动 ID，因此它可能比 `eventBonuses` 的活动范围更广。
+
+单张礼装文件的 `events` 为按 ID 排序、去重的 `{ id, name }` 数组，汇总投影为 `{ id }`，只读取以下明确来源：
 
 - 属于该礼装的 `skillSvts[].eventId`；
 - `extraPassive[].eventId` 及绑定/额外被动 `script.otherValidEventId`；

@@ -88,7 +88,7 @@ export async function combineCraftEssences(options: CombineCraftEssencesOptions 
     });
   }
   if (craftEssences.length === 0) throw new Error("No craft essences to combine");
-  await writeJsonAtomic(output, craftEssences);
+  await writeJsonAtomic(output, craftEssences, { arrayItemPerLine: true });
   console.log(`Combined craft essences. written=${craftEssences.length} output=${output}`);
   return craftEssences;
 }
