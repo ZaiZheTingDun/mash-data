@@ -19,6 +19,7 @@ raw 保存在 private，基础包、补丁包、离线包及资源状态清单�
 ```bash
 npm --prefix mash-atlasacademy run start:ces
 npm run atlas:combine-ces
+npm run atlas:combine-events
 npm run resources:sync
 ```
 

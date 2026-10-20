@@ -11,3 +11,4 @@ execFileSync(process.execPath, [fileURLToPath(new URL("./generate-servants.ts", 
 for (const name of ["servants_variants.json", "servants_variants_cn.json", "craft_essences.json"]) {
   await copyFile(join(root, "assets", name), join(destination, name));
 }
+await copyFile(join(root, "assets", "events", "catalog.json"), join(destination, "events.json"));
