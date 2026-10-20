@@ -20,14 +20,43 @@ export interface BondBonus {
   conditions: JsonRecord;
 }
 
+export type BondBonusSummary = Pick<BondBonus, "skillId" | "functionId" | "limitBreak" | "values" | "supportValues">;
+
+export interface EventBonus {
+  eventId: number;
+  type: "dropCount" | "dropAmountPercent" | "points" | "damage" | "enemyAppearance" | "fortificationPoints";
+  functionType: string;
+  buffType: string | null;
+  skillId: number;
+  functionId: number;
+  limitBreak: number;
+  detail: string | null;
+  /** Atlas Individuality from the function value; null for an unrestricted target. */
+  targetId: number | null;
+  flat: number | null;
+  percent: number | null;
+  /** Some damage bonuses scale with event points and have no fixed percentage. */
+  dynamic: boolean;
+  /** The matching event's function group can provide an item or effect icon. */
+  group: JsonRecord | null;
+  conditions: JsonRecord;
+}
+
+/** Index fields only; the per-CE compact file retains the full bonus. */
+export type EventBonusSummary = Omit<EventBonus, "detail" | "conditions" | "group">;
+
 export interface CraftEssenceSummary {
   bondEquipOwner: number | null;
   valentineEquipOwner: number | null;
-  bondBonuses: BondBonus[];
-  events: Array<{ id: number; name: string | null }>;
+  bondBonuses: BondBonusSummary[];
+  eventBonuses: EventBonusSummary[];
+  events: Array<{ id: number }>;
 }
 
 export interface CompactCraftEssence extends CraftEssenceSummary {
+  bondBonuses: BondBonus[];
+  eventBonuses: EventBonus[];
+  events: Array<{ id: number; name: string | null }>;
   schemaVersion: 1;
   id: number;
   collectionNo: number;
@@ -104,6 +133,37 @@ function bonusValues(value: unknown): BondBonusValue[] {
   });
 }
 
+function eventBonusType(func: JsonRecord): EventBonus["type"] | null {
+  switch (func.funcType) {
+    case "eventDropUp":
+    case "classDropUp": return "dropCount";
+    case "eventPointUp": return "points";
+    case "eventFortificationPointUp": return "fortificationPoints";
+    case "enemyEncountRateUp":
+    case "enemyEncountCopyRateUp": return "enemyAppearance";
+    default: {
+      const buffs = optionalRecords(func.buffs, "CE function buffs");
+      return buffs.some((buff) => ["upDamage", "upDamageEventPoint", "upCommandatk", "upCriticaldamage", "upNpdamage"].includes(String(buff.type)))
+        ? "damage" : null;
+    }
+  }
+}
+
+function eventBonusValue(func: JsonRecord, value: JsonRecord, type: EventBonus["type"]) {
+  const key = type === "damage" ? "Value" : type === "dropCount" ? "AddCount" : "RateCount";
+  const amount = value[key];
+  if (typeof amount !== "number" || !Number.isFinite(amount)) {
+    throw new Error(`Invalid event bonus ${key} for function ${func.funcId}`);
+  }
+  const dynamic = type === "damage" && optionalRecords(func.buffs, "CE function buffs")
+    .some((buff) => buff.type === "upDamageEventPoint");
+  return {
+    flat: type === "dropCount" ? amount : null,
+    percent: type === "dropCount" || dynamic ? null : amount / 10,
+    dynamic,
+  };
+}
+
 /** Pure projection: no network access, no full skill/function trees in the result. */
 export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): CompactCraftEssence {
   validateRawCraftEssence(raw);
@@ -112,6 +172,7 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
   const eventIds = new Set<number>();
   const addEvent = (id: unknown) => { if (positiveId(id)) eventIds.add(id); };
   const bondBonuses: BondBonus[] = [];
+  const eventBonuses: EventBonus[] = [];
 
   for (const skill of raw.skills) {
     const bindings = optionalRecords(skill.skillSvts, "skill bindings")
@@ -127,6 +188,49 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
       const followerVals = optionalRecords(func.followerVals, "support values");
       for (const group of groups) addEvent(group.eventId);
       for (const val of [...vals, ...followerVals]) addEvent(val.EventId);
+      const type = eventBonusType(func);
+      if (type) {
+        const bindingEventIds = [...new Set([...bindings, ...passives]
+          .map((binding) => binding.eventId).filter(positiveId))];
+        const groupEventIds = [...new Set(groups.map((group) => group.eventId).filter(positiveId))];
+        for (const val of vals) {
+          // A value's EventId is stronger evidence than historical funcGroup display entries.
+          const ids = positiveId(val.EventId) ? [val.EventId]
+            : bindingEventIds.length ? bindingEventIds : groupEventIds;
+          if (ids.length === 0) continue;
+          const valueType = type === "dropCount" && val.AddCount === undefined && val.RateCount !== undefined
+            ? "dropAmountPercent" : type;
+          if (!positiveId(func.funcId)) throw new Error("Invalid event bonus function ID");
+          if (typeof skill.condLimitCount !== "number" || !Number.isInteger(skill.condLimitCount) || skill.condLimitCount < 0) {
+            throw new Error("Invalid event bonus limit break condition");
+          }
+          const amount = eventBonusValue(func, val, valueType);
+          const buffs = optionalRecords(func.buffs, "CE function buffs");
+          const { Individuality, EventId, AddCount, RateCount, Value, ...otherValueConditions } = val;
+          for (const eventId of ids) {
+            eventBonuses.push({
+              eventId,
+              type: valueType,
+              functionType: String(func.funcType),
+              buffType: valueType === "damage" ? String(buffs.find((buff) => ["upDamage", "upDamageEventPoint", "upCommandatk", "upCriticaldamage", "upNpdamage"].includes(String(buff.type)))?.type) : null,
+              skillId: skill.id as number,
+              functionId: func.funcId,
+              limitBreak: skill.condLimitCount,
+              detail: typeof skill.detail === "string" ? skill.detail : null,
+              targetId: positiveId(Individuality) ? Individuality : null,
+              ...amount,
+              group: groups.find((group) => group.eventId === eventId) ?? null,
+              conditions: {
+                skill: pick(skill, ["condQuestId", "condQuestPhase", "condLv", "script", "actIndividuality"]),
+                bindings,
+                extraPassive: passives,
+                function: pick(func, ["funcTargetType", "funcTargetTeam", "functvals", "overWriteTvalsList", "funcquestTvals", "script"]),
+                value: otherValueConditions,
+              },
+            });
+          }
+        }
+      }
       if (func.funcType !== "servantFriendshipUp") continue;
       if (!positiveId(func.funcId)) throw new Error("Invalid bond bonus function ID");
       if (typeof skill.condLimitCount !== "number" || !Number.isInteger(skill.condLimitCount) || skill.condLimitCount < 0) {
@@ -163,6 +267,7 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
     bondEquipOwner: raw.bondEquipOwner ?? null,
     valentineEquipOwner: raw.valentineEquipOwner ?? null,
     bondBonuses,
+    eventBonuses,
     events: [...eventIds].sort((a, b) => a - b).map((id) => ({ id, name: eventNames.get(id) ?? null })),
   };
 }
@@ -171,7 +276,10 @@ export function craftEssenceSummary(ce: CompactCraftEssence): CraftEssenceSummar
   return {
     bondEquipOwner: ce.bondEquipOwner,
     valentineEquipOwner: ce.valentineEquipOwner,
-    bondBonuses: ce.bondBonuses,
-    events: ce.events,
+    bondBonuses: ce.bondBonuses.map(({ skillId, functionId, limitBreak, values, supportValues }) => ({
+      skillId, functionId, limitBreak, values, supportValues,
+    })),
+    eventBonuses: ce.eventBonuses.map(({ detail: _detail, conditions: _conditions, group: _group, ...bonus }) => bonus),
+    events: ce.events.map(({ id }) => ({ id })),
   };
 }

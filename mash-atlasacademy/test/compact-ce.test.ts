@@ -1,7 +1,7 @@
 import "./setup-data-root.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compactCraftEssence } from "../src/compact-ce.js";
+import { compactCraftEssence, craftEssenceSummary } from "../src/compact-ce.js";
 import { buildCraftEssenceOwnerIndex, type CombinedCraftEssence } from "../src/combine-ces.js";
 import { bondSkill, equip } from "./fixtures/ces.js";
 
@@ -60,11 +60,12 @@ test("conditional and flat bonuses retain source conditions and every value", ()
 test("events come only from explicit IDs, include reruns and all value sources, and ignore other CE bindings", () => {
   const raw = equip(2705, { id: 9409530, skills: [{
     id: 995449,
+    condLimitCount: 0,
     detail: "This name alone is not an event association",
     skillSvts: [{ svtId: 9409530, eventId: 80627 }, { svtId: 999, eventId: 999 }],
     extraPassive: [{ eventId: 80628, script: { otherValidEventId: 80629 } }],
-    functions: [{ funcType: "eventPointUp", funcGroup: [{ eventId: 80627 }, { eventId: 0 }],
-      svals: [{ EventId: 80628 }], followerVals: [{ EventId: 80630 }],
+    functions: [{ funcId: 1, funcType: "eventPointUp", funcGroup: [{ eventId: 80627 }, { eventId: 0 }],
+      svals: [{ EventId: 80628, RateCount: 100 }], followerVals: [{ EventId: 80630, RateCount: 100 }],
     }],
   }] });
   assert.deepEqual(compactCraftEssence(raw, [{ id: 80627, name: "Original" }, { id: 80628, name: "Rerun" }]).events, [
@@ -72,6 +73,77 @@ test("events come only from explicit IDs, include reruns and all value sources, 
     { id: 80629, name: null }, { id: 80630, name: null },
   ]);
   assert.deepEqual(compactCraftEssence(equip(551, { flags: ["svtEquipEvent"] })).events, []);
+});
+
+test("event bonuses preserve material, point and damage values by event and limit break", () => {
+  const raw = equip(100, { skills: [
+    { id: 1, condLimitCount: 0, detail: "event material +1", skillSvts: [{ svtId: 9400100, eventId: 80001 }],
+      functions: [{ funcId: 10, funcType: "eventDropUp", svals: [{ Individuality: 123, EventId: 80001, AddCount: 1 }],
+        funcGroup: [{ eventId: 80001, name: "drop", icon: "item.png" }, { eventId: 80002, name: "old display" }] }] },
+    { id: 2, condLimitCount: 4, detail: "event material +2", skillSvts: [{ svtId: 9400100, eventId: 80001 }],
+      functions: [{ funcId: 10, funcType: "eventDropUp", svals: [{ Individuality: 123, EventId: 80001, AddCount: 2 }],
+        funcGroup: [{ eventId: 80001, name: "drop", icon: "item.png" }] }] },
+    { id: 3, condLimitCount: 0, skillSvts: [{ svtId: 9400100, eventId: 80002 }],
+      functions: [{ funcId: 11, funcType: "eventPointUp", svals: [{ Individuality: 456, EventId: 80002, RateCount: 300 }],
+        funcGroup: [{ eventId: 80002, name: "points" }] }] },
+    { id: 4, condLimitCount: 0, skillSvts: [{ svtId: 9400100, eventId: 80002 }],
+      functions: [{ funcId: 12, funcType: "addStateShort", svals: [{ Value: 1000 }],
+        buffs: [{ type: "upDamage" }], funcGroup: [{ eventId: 80002, name: "attack" }] }] },
+  ] });
+  const bonuses = compactCraftEssence(raw).eventBonuses;
+  assert.deepEqual(bonuses.map(({ eventId, type, limitBreak, targetId, flat, percent }) =>
+    [eventId, type, limitBreak, targetId, flat, percent]), [
+    [80001, "dropCount", 0, 123, 1, null],
+    [80001, "dropCount", 4, 123, 2, null],
+    [80002, "points", 0, 456, null, 30],
+    [80002, "damage", 0, null, null, 100],
+  ]);
+  assert.equal(bonuses[0]?.group?.icon, "item.png");
+  assert.equal(bonuses.some((bonus) => bonus.eventId === 80002 && bonus.type === "dropCount"), false);
+});
+
+test("event bonus supports percentage drops and variable event-point damage", () => {
+  const raw = equip(101, { skills: [{ id: 1, condLimitCount: 0, functions: [
+    { funcId: 1, funcType: "eventDropUp", svals: [{ EventId: 80001, RateCount: 1200 }] },
+    { funcId: 2, funcType: "addStateShort", svals: [{ Value: 0 }],
+      buffs: [{ type: "upDamageEventPoint" }], funcGroup: [{ eventId: 80001 }] },
+  ] }] });
+  const bonuses = compactCraftEssence(raw).eventBonuses;
+  assert.deepEqual(bonuses.map(({ type, percent, dynamic }) => [type, percent, dynamic]), [
+    ["dropAmountPercent", 120, false], ["damage", null, true],
+  ]);
+});
+
+test("CE summary keeps searchable event values while detail stays in the per-CE file", () => {
+  const raw = equip(2440, { skills: [{
+    id: 994969, condLimitCount: 4, detail: "event quest damage +30%",
+    skillSvts: [{ svtId: 9402440, eventId: 80559 }],
+    functions: [{ funcId: 22839, funcType: "addStateShort", svals: [{ Value: 300 }],
+      buffs: [{ type: "upDamage" }], funcquestTvals: [{ id: 94000176 }],
+      funcGroup: [{ eventId: 80559, name: "attack bonus", icon: "effect.png", priority: 300 }],
+    }],
+  }] });
+  const full = compactCraftEssence(raw);
+  const summary = craftEssenceSummary(full).eventBonuses[0]!;
+  assert.equal(summary.percent, 30);
+  assert.equal(summary.eventId, 80559);
+  assert.equal(summary.limitBreak, 4);
+  assert.equal("group" in summary, false);
+  assert.equal("detail" in summary, false);
+  assert.equal("conditions" in summary, false);
+  assert.equal(full.eventBonuses[0]?.detail, "event quest damage +30%");
+  assert.equal(full.eventBonuses[0]?.group?.icon, "effect.png");
+  assert.deepEqual((full.eventBonuses[0]?.conditions.function as Record<string, unknown>).funcquestTvals, [{ id: 94000176 }]);
+});
+
+test("CE summary keeps bond values and their value conditions without display metadata", () => {
+  const full = compactCraftEssence(equip(330, { skills: [bondSkill(990554, 0, 20, 30)] }));
+  const bonus = craftEssenceSummary(full).bondBonuses[0]!;
+  assert.equal(bonus.values[0]?.percent, 2);
+  assert.equal(bonus.supportValues?.[0]?.percent, 3);
+  assert.equal("detail" in bonus, false);
+  assert.equal("conditions" in bonus, false);
+  assert.ok(full.bondBonuses[0]?.conditions);
 });
 
 test("owner index supports multiple Mash bond CEs and valentine CEs, using internal IDs", () => {
