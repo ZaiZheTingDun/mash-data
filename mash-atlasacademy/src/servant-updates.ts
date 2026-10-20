@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { fileExists, readJson, writeJsonAtomic } from "./fs-utils.js";
 import { DATA_VERSION_FILE, SERVANTS_DIR } from "./paths.js";
+import { hasCurrentServantTraits } from "./compact-servant.js";
 import type {
   AtlasChangeEntity,
   AtlasChangeRecord,
@@ -220,6 +221,16 @@ export async function inspectServantCache(
       const data = await readJson<NiceServant>(path);
       if (!data || typeof data !== "object" || !("profile" in data)) {
         invalid.add(collectionNo);
+        continue;
+      }
+      const raw = await readJson<NiceServant>(rawPath);
+      if (!raw || typeof raw !== "object" || !("profile" in raw)) {
+        invalid.add(collectionNo);
+        continue;
+      }
+      if (!hasCurrentServantTraits(data, raw)) {
+        // Rebuild all trait projections locally, including form overrides and conditions.
+        missing.add(collectionNo);
         continue;
       }
       valid.push({ collectionNo, data });

@@ -24,8 +24,32 @@ export interface NiceServantProfile {
   [key: string]: unknown;
 }
 
+export interface ServantTrait {
+  id: number;
+  name?: string;
+}
+
+export interface ServantTraitOverrides {
+  ascension?: Record<string, ServantTrait[]>;
+  costume?: Record<string, ServantTrait[]>;
+}
+
+export interface ServantTraitAddition {
+  idx: number;
+  trait: ServantTrait[];
+  limitCount: number;
+  condType: string;
+  condId: number;
+  condNum: number;
+  eventId: number;
+  startedAt: number;
+  endedAt: number;
+}
+
 export interface NiceServant {
   id: number;
+  traits?: ServantTrait[];
+  traitAdd?: ServantTraitAddition[];
   extraAssets?: NiceServantExtraAssets;
   profile?: NiceServantProfile;
   [key: string]: unknown;

@@ -8,7 +8,7 @@ import {
   writeJsonAtomic,
 } from "./fs-utils.js";
 import { SERVANTS_DIR } from "./paths.js";
-import { compactServant } from "./compact-servant.js";
+import { compactServant, hasCurrentServantTraits } from "./compact-servant.js";
 import { downloadCraftEssenceImages, loadOrFetchCraftEssence } from "./ce-cache.js";
 import type {
   BasicEquip,
@@ -116,7 +116,8 @@ export async function loadOrFetchServant(
       if (raw && typeof raw === "object" && "profile" in raw) {
         if (await fileExists(jsonPath)) {
           const cached = await readJson<NiceServant>(jsonPath);
-          if (cached && typeof cached === "object" && "profile" in cached) {
+          if (cached && typeof cached === "object" && "profile" in cached
+            && hasCurrentServantTraits(cached, raw)) {
             return { data: cached, refreshed: false };
           }
         }
