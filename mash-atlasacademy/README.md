@@ -60,7 +60,9 @@ assets/
 ├── servants_variants.json
 ├── servants_variants_cn.json
 ├── events/
-│   └── catalog.json                  # JP/CN 活动目录
+│   ├── catalog.json                  # JP/CN 活动目录
+│   └── items.json                    # JP/CN 活动道具，共用日服图标
+├── icons/items/                      # 按源文件名去重的活动道具图标
 └── craft_essences.json
 ```
 
@@ -82,6 +84,7 @@ JP 从者图片取自 `extraAssets.commands`、`faces` 和 `narrowFigure` 下的
 | `combine:variants` | 汇总形态，并向对应槽位追加运行时技能 |
 | `combine:ces` | 从本地 raw 与活动索引重建精简礼装及汇总 |
 | `combine:events` | 从本地 JP/CN 活动索引生成活动目录 |
+| `download:event-items` | 刷新双服五类活动道具，补齐共用日服图标，见 [活动数据](../docs/events.md) |
 | `compact:servants` | 将旧缓存转换为 raw 与精简文件 |
 | `download:skill-icons` | 单独下载技能图标 |
 | `download:mystic-codes` | 单独下载魔术礼装数据与图片 |

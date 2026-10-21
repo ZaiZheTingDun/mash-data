@@ -12,3 +12,4 @@ for (const name of ["servants_variants.json", "servants_variants_cn.json", "craf
   await copyFile(join(root, "assets", name), join(destination, name));
 }
 await copyFile(join(root, "assets", "events", "catalog.json"), join(destination, "events.json"));
+await copyFile(join(root, "assets", "events", "items.json"), join(destination, "event_items.json"));

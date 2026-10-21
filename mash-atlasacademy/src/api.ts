@@ -71,6 +71,10 @@ export async function fetchBasicEvents(region: Region): Promise<BasicEvent[]> {
   return fetchJson<BasicEvent[]>(`${API_BASE}/export/${region}/basic_event.json`, `${region} basic event list`);
 }
 
+export async function fetchItems(region: Region): Promise<unknown> {
+  return fetchJson<unknown>(`${API_BASE}/export/${region}/nice_item.json`, `${region} item list`);
+}
+
 async function fetchJson<T>(url: string, label: string): Promise<T> {
   const res = await fetch(url);
 

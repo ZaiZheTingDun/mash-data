@@ -59,14 +59,18 @@ export async function readJson<T>(filePath: string): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
+export class DownloadHttpError extends Error {
+  constructor(url: string, public readonly status: number, statusText: string) {
+    super(`Failed to download ${url}: HTTP ${status} ${statusText}`);
+  }
+}
+
 export async function downloadFile(url: string, destPath: string): Promise<void> {
   await ensureDir(dirname(destPath));
 
   const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(
-      `Failed to download ${url}: HTTP ${res.status} ${res.statusText}`,
-    );
+    throw new DownloadHttpError(url, res.status, res.statusText);
   }
   if (!res.body) {
     throw new Error(`No response body for ${url}`);

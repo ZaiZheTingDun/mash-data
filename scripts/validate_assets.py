@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -43,6 +44,33 @@ def validate_assets(root: Path) -> int:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError(f"asset JSON must contain an object: {entry.path}")
+        if entry.path == "events/items.json":
+            regions = payload.get("regions")
+            if payload.get("schemaVersion") != 1 or not isinstance(regions, dict):
+                raise ValueError("invalid event items catalog")
+            for region in ("JP", "CN"):
+                items = regions.get(region)
+                if not isinstance(items, list) or not items:
+                    raise ValueError(f"missing {region} event items")
+                seen = set()
+                for item in items:
+                    if (not isinstance(item, dict) or type(item.get("id")) is not int
+                            or item["id"] <= 0 or item["id"] in seen
+                            or item.get("type") not in {"eventItem", "eventPoint", "boostItem", "dice", "eventPassiveSkillGiven"}
+                            or not isinstance(item.get("name"), str) or not item["name"].strip()
+                            or not isinstance(item.get("detail"), str)
+                            or not isinstance(item.get("background"), str) or not item["background"]
+                            or "icon" not in item):
+                        raise ValueError(f"invalid {region} event item")
+                    seen.add(item["id"])
+                    if item["icon"] is None:
+                        if (not isinstance(item.get("missingIcon"), str)
+                                or not re.fullmatch(r"https://static\.atlasacademy\.io/JP/Items/[0-9]+\.png", item["missingIcon"])):
+                            raise ValueError(f"missing upstream icon URL for {region} event item")
+                    elif isinstance(item["icon"], str) and re.fullmatch(r"icons/items/[0-9]+\.png", item["icon"]):
+                        require_image(assets / item["icon"])
+                    else:
+                        raise ValueError(f"invalid {region} event item icon")
         icons = [payload.get("icon"), *(skill.get("icon") for skill in payload.get("skills", []))]
         for icon in icons:
             if isinstance(icon, str) and icon:
