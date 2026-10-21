@@ -184,6 +184,44 @@ class PipelineTests(unittest.TestCase):
         with zipfile.ZipFile(self.root / "dist" / "assets-release" / "patches" / "v1-to-v2.zip") as archive:
             self.assertEqual(json.loads(archive.read("events/catalog.json")), catalog)
 
+    def test_event_items_share_icons_in_base_offline_and_patch_packages(self):
+        icon = self.root / "assets" / "icons" / "items" / "10.png"
+        icon.parent.mkdir(parents=True)
+        Image.new("RGBA", (128, 128), "red").save(icon)
+        item = {"id": 1, "type": "eventItem", "name": "JP", "detail": "", "background": "gold", "icon": "icons/items/10.png"}
+        catalog = {"schemaVersion": 1, "regions": {"JP": [item], "CN": [{**item, "name": "国服"}]}}
+        catalog_path = self.root / "assets" / "events" / "items.json"
+        write_json(catalog_path, catalog)
+        validate_assets(self.root)
+        self.release_base()
+        with zipfile.ZipFile(self.root / "dist" / "assets-release" / "base" / "v1" / "assets-json-v1.zip") as archive:
+            self.assertEqual(json.loads(archive.read("events/items.json")), catalog)
+        with zipfile.ZipFile(self.root / "dist" / "assets-release" / "base" / "v1" / "icon-images-v1.zip") as archive:
+            self.assertEqual(archive.namelist().count("icons/items/10.png"), 1)
+        offline = BaseBuilder(self.root).build_offline_bundle()
+        with zipfile.ZipFile(offline.path) as archive:
+            self.assertIn("events/items.json", archive.namelist())
+            self.assertIn("icons/items/10.png", archive.namelist())
+        catalog["regions"]["CN"][0]["name"] = "更新名称"
+        write_json(catalog_path, catalog)
+        prepare(self.root, self.store, "patch")
+        with zipfile.ZipFile(self.root / "dist" / "assets-release" / "patches" / "v1-to-v2.zip") as archive:
+            self.assertEqual(json.loads(archive.read("events/items.json")), catalog)
+            self.assertNotIn("icons/items/10.png", archive.namelist())
+        catalog["regions"]["JP"].append({**item, "id": 2, "icon": None,
+                                          "missingIcon": "https://static.atlasacademy.io/JP/Items/2.png"})
+        write_json(catalog_path, catalog)
+        validate_assets(self.root)
+        del catalog["regions"]["JP"][-1]["missingIcon"]
+        write_json(catalog_path, catalog)
+        with self.assertRaisesRegex(ValueError, "missing upstream icon URL"):
+            validate_assets(self.root)
+        catalog["regions"]["JP"].pop()
+        write_json(catalog_path, catalog)
+        icon.unlink()
+        with self.assertRaisesRegex(ValueError, "missing referenced image: icons/items/10.png"):
+            validate_assets(self.root)
+
     def test_base_and_patch_preserve_history_and_publish_latest_last(self):
         original = (self.root / "assets" / "manifest.json").read_bytes()
         self.release_base()
@@ -404,6 +442,8 @@ class PipelineTests(unittest.TestCase):
             ("D", "assets/ces/1/card_ce.png", "概念礼装图片"),
             ("A", "assets/skills/2/skill_cn.json", "技能 JSON"),
             ("A", "assets/icons/skill_1.png", "技能图标"),
+            ("A", "assets/icons/items/10.png", "活动道具图标"),
+            ("M", "assets/events/items.json", "活动道具 JSON"),
             ("M", "assets/mystic-codes/1/mystic-code-cn.json", "魔术礼装 JSON"),
             ("A", "assets/mystic-codes/1/item-male.png", "魔术礼装图片"),
             ("M", "assets/craft_essences.json", "资源汇总"),

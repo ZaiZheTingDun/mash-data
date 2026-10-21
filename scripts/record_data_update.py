@@ -17,6 +17,7 @@ RESOURCE_TYPES = (
     "从者数据 JSON", "从者原始 JSON", "从者图片", "战斗形态 JSON",
     "概念礼装 JSON", "概念礼装原始 JSON", "概念礼装图片", "技能 JSON", "技能图标",
     "魔术礼装 JSON", "魔术礼装图片", "资源汇总", "客户端资源",
+    "活动道具 JSON", "活动道具图标",
     "Atlas 更新游标", "分析报告", "其他状态与配置",
 )
 
@@ -39,6 +40,10 @@ def resource_type(value: str) -> str:
             return data_label if path.suffix == ".json" else image_label
     if value.startswith("assets/skills/"):
         return "技能 JSON"
+    if value == "assets/events/items.json":
+        return "活动道具 JSON"
+    if value.startswith("assets/icons/items/"):
+        return "活动道具图标"
     if value.startswith("assets/icons/"):
         return "技能图标"
     if value.startswith("assets/") and path.name not in {"version.json", "manifest.json"}:
