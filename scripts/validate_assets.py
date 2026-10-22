@@ -91,6 +91,9 @@ def validate_assets(root: Path) -> int:
             for key in ("bondBonuses", "qpBonuses", "eventBonuses", "events"):
                 if not isinstance(payload[key], list):
                     raise ValueError(f"invalid craft essence {key}: {entry.path}")
+            for key in ("masterExpBonuses", "mysticCodeExpBonuses", "friendPointBonuses"):
+                if key in payload and not isinstance(payload[key], list):
+                    raise ValueError(f"invalid craft essence {key}: {entry.path}")
             for key in ("bondEquipOwner", "valentineEquipOwner"):
                 owner = payload[key]
                 if owner is not None and (type(owner) is not int or owner <= 0):

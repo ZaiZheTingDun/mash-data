@@ -186,29 +186,26 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python scripts/sync_release_manifest.py --version "$RELEASE_VERSION" --data-commit "$RELEASE_DATA_COMMIT"
 
-      - name: Commit and push release metadata only
+      - name: Commit release metadata and push version tag
         id: push
-        if: steps.sync.outputs.changed == 'true'
         working-directory: private-data
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -c core.hooksPath=/dev/null commit --quiet -m "chore(data): sync published release v${RELEASE_VERSION}"
-          git -c core.hooksPath=/dev/null push origin "HEAD:refs/heads/${PRIVATE_DATA_BRANCH}"
+          bash ../scripts/push_release_metadata.sh
 
       - name: Summarize release metadata writeback
         if: always()
         env:
           SYNC_OUTCOME: ${{ steps.sync.outcome }}
-          CHANGED: ${{ steps.sync.outputs.changed }}
           PUSH_OUTCOME: ${{ steps.push.outcome }}
         run: |
           python - <<'PY'
           import os
-          synced = os.environ['SYNC_OUTCOME'] == 'success' and (os.environ['CHANGED'] == 'false' or os.environ['PUSH_OUTCOME'] == 'success')
+          synced = os.environ['SYNC_OUTCOME'] == 'success' and os.environ['PUSH_OUTCOME'] == 'success'
           status = 'synchronized' if synced else 'failed; re-run this writeback job to retry without republishing'
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
-              output.write(f"R2 release: published v{os.environ['RELEASE_VERSION']}\n\nPrivate manifest and version: {status}\n")
+              output.write(f"R2 release: published v{os.environ['RELEASE_VERSION']}\n\nPrivate manifest, version and tag v{os.environ['RELEASE_VERSION']}: {status}\n")
           if not synced:
-              print(f"::error::Release v{os.environ['RELEASE_VERSION']} is already published; private manifest/version sync failed. Re-run failed jobs to retry the writeback.")
+              print(f"::error::Release v{os.environ['RELEASE_VERSION']} is already published; private manifest/version/tag sync failed. Re-run failed jobs to retry the writeback.")
           PY
