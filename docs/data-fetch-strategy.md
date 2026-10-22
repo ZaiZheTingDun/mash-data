@@ -14,7 +14,7 @@
 2. 从者与礼装详情使用独立游标，通过 Atlas 数据版本和 Changes 日志增量刷新；本地缺失或损坏的 raw 也会补齐。
 3. 从者与礼装图片按文件存在性补缺，不覆盖已有图片。
 4. runtime skill 对当前发现的依赖集合每次重新下载并覆盖。
-5. variants、汇总文件、验证报告和 `resources/` 每次基于本地缓存完整重建。
+5. variants、汇总文件、验证报告和 `assets/catalogs/` 每次基于本地缓存完整重建。
 
 | 数据 | 远端请求 | 本地判断 | 已有文件处理 |
 | --- | --- | --- | --- |
@@ -23,8 +23,8 @@
 | JP 从者图片 | 根据从者详情逐项处理 | 检查目标路径 | 已存在则跳过 |
 | JP/CN 礼装基础列表 | 每次获取完整 `basic_equip.json` | 遍历全部有效 `collectionNo` | 不单独落盘 |
 | JP/CN 礼装详情 | `/info` 与 Changes；详情使用 `nice/equip?lore=true` | 礼装/技能/函数/Buff 变化、raw 缺失或损坏 | 写入 raw，每次重建精简 JSON |
-| JP/CN 活动索引 | 每次获取 `basic_event.json` | 校验 ID 与名称 | 缓存至 `state/atlas-events-jp.json`、`atlas-events-cn.json`；本地生成 `assets/events/catalog.json` |
-| JP/CN 活动道具 | 每次获取两服 `nice_item.json` | 收录五类道具、按图片文件名去重 | 刷新 `assets/events/items.json`，只补齐日服图标；404 显式标记并在下次重试 |
+| JP/CN 活动索引 | 每次获取 `basic_event.json` | 校验 ID 与名称 | 缓存至 `state/atlas-events-jp.json`、`atlas-events-cn.json`；本地生成 `assets/catalogs/events.json` |
+| JP/CN 活动道具 | 每次获取两服 `nice_item.json` | 收录五类道具、按图片文件名去重 | 刷新 `assets/catalogs/event_items.json`，只补齐日服图标；404 显式标记并在下次重试 |
 | JP 礼装图片 | 根据精简礼装的 `face` | 检查目标路径 | 已存在则跳过 |
 | runtime skill | 请求全部已发现的依赖 ID | 不用已有技能文件跳过请求 | 每次覆盖 |
 | variants、汇总和验证结果 | 不请求网络 | 扫描当前本地缓存 | 每次覆盖输出 |
@@ -37,19 +37,20 @@
 data:atlas
   ├─ 增量刷新从者、补齐从者图片
   ├─ 增量刷新概念礼装 raw、重建精简数据并补齐图片
-  ├─ 从活动索引生成 JP/CN 活动目录
-  ├─ 刷新 JP/CN 活动道具、补齐共用日服图标
   ├─ 覆盖下载 runtime skill 依赖
-  ├─ 全量重建并汇总 JP/CN variants
-  ├─ 运行完整度测试并生成 verification 报告
-  └─ 全量重建概念礼装汇总
-
-resources:sync
-  ├─ 重新生成 resources/servants.json
-  └─ 复制 variants、概念礼装汇总、活动目录和活动道具到 resources/
+  ├─ catalogs:generate
+  │   ├─ 全量重建并汇总 JP/CN variants
+  │   ├─ 从 raw 重建概念礼装精简数据与汇总
+  │   ├─ 从本地活动索引生成合并后的活动汇总
+  │   ├─ 刷新 JP/CN 道具、补齐共用图标并生成道具汇总
+  │   └─ 从本地详情生成从者汇总
+  ├─ 运行形态完整度测试
+  └─ 基于最新 catalogs 生成 verification 报告
 ```
 
-`resources:sync` 根据 `assets/` 中的缓存生成和复制资源，再生成形态技能目标差异报告，不访问 Atlas Academy。完整报告会读取已有 `resources/servants_variants.json`，因此 `data:atlas` 面向已有完整数据目录；各步骤输入见 [数据检查与分析报告](../verification/README.md)。
+`assets/catalogs/` 的 JSON 统一按每条记录一行输出：从者、形态及礼装数组每项一行；活动和道具分别合并地区记录，输出 schemaVersion 2 的 `events` / `items` 数组，每项一行。道具去掉 `detail`，以 JP 元数据配合 `nameCN`；活动保留 `JP` / `CN` 时间及必要的地区覆写，详见[活动目录](events.md)。六个汇总随 `assets-json`、增量补丁和离线包发布。
+
+`catalogs:generate` 从源数据重建六份汇总，无需预先存在汇总文件。形态、礼装、活动和从者步骤读取本地缓存，活动道具步骤会从 Atlas Academy 刷新 JP/CN 元数据并补齐缺失图标。因此单独执行仍需已有从者详情、礼装 raw、活动索引和运行时技能依赖。它不读取旧汇总位置，也不清理旧文件。分析报告在全部汇总生成后读取 `assets/catalogs/`，各步骤输入见[数据检查与分析报告](../verification/README.md)。
 
 ## 从者版本游标
 
@@ -101,7 +102,7 @@ Atlas 的 `nice/servant?lore=true` 响应包含完整剧情、战斗效果和养
 
 `classPassive`、`extraPassive` 和 `appendPassive` 不进入精简文件。对尚未转换的旧缓存运行 `npm run atlas:compact-servants`，会先保留为 raw，再生成精简文件。若 raw 已缺失，下一次 `npm start` 会重新请求对应 Atlas 数据补齐。
 
-旧精简文件缺少基础特性、名称、形态覆写或条件特性而 raw 已有对应数据时，正常更新会从 raw 本地重建，无需重新下载。`resources/servants.json` 的 `traits.JP`、`traits.CN` 分别输出对应地区排序、去重后的纯特性 ID 数组；缺少地区数据或特性字段时为 null，已知空列表为 `[]`，国服特性不使用日服回退。汇总文件整体保留缩进换行，仅特性数字数组保持单行，直接用特性 ID 进行条件匹配；名称只保留在精简文件中，沿用 Atlas 原值（如 `alignmentEvil`）。`traitOverrides.JP/CN` 输出再临及灵衣的特性 ID 数组覆写，`traitAdd.JP/CN` 输出带条件的额外特性，其 `trait` 也只保存 ID 数组；这些数据不合并进基础 `traits`。编号、空值和生效规则见 [概念礼装条件所需的从者特性](craft-essences.md#从者形态与条件特性)。
+旧精简文件缺少基础特性、名称、形态覆写或条件特性而 raw 已有对应数据时，正常更新会从 raw 本地重建，无需重新下载。`assets/catalogs/servants.json` 的 `traits.JP`、`traits.CN` 分别输出对应地区排序、去重后的纯特性 ID 数组；缺少地区数据或特性字段时为 null，已知空列表为 `[]`，国服特性不使用日服回退。汇总文件每个从者保留一行，特性使用纯数字数组，直接用特性 ID 进行条件匹配；名称只保留在精简文件中，沿用 Atlas 原值（如 `alignmentEvil`）。`traitOverrides.JP/CN` 输出再临及灵衣的特性 ID 数组覆写，`traitAdd.JP/CN` 输出带条件的额外特性，其 `trait` 也只保存 ID 数组；这些数据不合并进基础 `traits`。编号、空值和生效规则见 [概念礼装条件所需的从者特性](craft-essences.md#从者形态与条件特性)。
 
 raw 文件不会进入基础资源包、增量补丁或资源状态清单。
 
@@ -148,7 +149,7 @@ JP 从者的卡面、头像和窄图仍只检查目标文件是否存在：
 - `assets/skills/{skillId}/skill.json`
 - `assets/skills/{skillId}/skill_cn.json`
 
-随后 variants、概念礼装汇总、verification 报告和 `resources/` 都从当前本地缓存全量重建。这些步骤不代表重新从 Atlas 下载所有源数据。
+随后 variants、概念礼装汇总、verification 报告和 `assets/catalogs/` 都从当前本地缓存全量重建。这些步骤不代表重新从 Atlas 下载所有源数据。
 
 ## 缓存清理与失败检查
 

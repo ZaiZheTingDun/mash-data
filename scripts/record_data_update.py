@@ -24,6 +24,8 @@ RESOURCE_TYPES = (
 
 def resource_type(value: str) -> str:
     path = PurePosixPath(value)
+    if value.startswith("assets/catalogs/"):
+        return "客户端资源"
     if path.name in {"servants_variants.json", "servants_variants_cn.json", "servant_variants.json", "servant_variants_cn.json"} and path.parts[0] == "assets":
         return "战斗形态 JSON"
     if value.startswith("assets/servants/"):
@@ -48,8 +50,6 @@ def resource_type(value: str) -> str:
         return "技能图标"
     if value.startswith("assets/") and path.name not in {"version.json", "manifest.json"}:
         return "资源汇总"
-    if value.startswith("resources/"):
-        return "客户端资源"
     if value in {"state/atlas-data-version.json", "state/atlas-ce-data-version.json"}:
         return "Atlas 更新游标"
     if value.startswith("verification/result/"):
@@ -95,7 +95,7 @@ def record_update(root: Path, run_id: str, code_commit: str, run_url: str) -> di
     )
     after_ce_state = read_json(root / ce_state_path) if (root / ce_state_path).exists() else None
     # Only generated data belongs in this commit; never stage code or credentials.
-    git(root, "add", "--all", "--", "assets", "resources", "state", "verification/result")
+    git(root, "add", "--all", "--", "assets", "state", "verification/result")
     fields = git(root, "diff", "--cached", "--no-renames", "--name-status", "-z").split("\0")
     changes = [{"status": fields[i], "path": fields[i + 1]} for i in range(0, len(fields) - 1, 2)]
     counts = dict(Counter(item["status"] for item in changes))

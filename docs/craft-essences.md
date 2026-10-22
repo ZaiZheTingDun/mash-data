@@ -8,7 +8,7 @@
 
 - `assets/ces/{collectionNo}/craft-essence-raw.json`、`craft-essence-cn-raw.json`：JP/CN 的完整 `nice/equip?lore=true` 响应。
 - 同目录的 `craft-essence.json`、`craft-essence-cn.json`：从 raw 生成的精简文件，`schemaVersion` 为 1。
-- `assets/craft_essences.json`：礼装汇总；`resources:sync` 将其复制到 `resources/craft_essences.json`。
+- `assets/catalogs/craft_essences.json`：礼装汇总，随 `assets-json`、增量补丁和离线包发布；包内路径为 `catalogs/craft_essences.json`。
 - `state/atlas-ce-data-version.json`：礼装独立 JP/CN 更新游标。
 - `state/atlas-events-jp.json`、`atlas-events-cn.json`：完整 `basic_event` 索引缓存，供活动名称解析使用。
 
@@ -20,10 +20,10 @@ raw 保存在 private，基础包、补丁包、离线包及资源状态清单�
 npm --prefix mash-atlasacademy run start:ces
 npm run atlas:combine-ces
 npm run atlas:combine-events
-npm run resources:sync
+npm run catalogs:generate
 ```
 
-首次运行会下载 JP/CN 完整礼装数据；后续运行按独立游标增量刷新，并从有效 raw 重建所有精简文件。最后一步还会同步从者资源与形态，需要已有完整数据目录。`combine:ces` 可以独立离线重建，但需要 raw 与两个地区的活动索引。
+首次运行会下载 JP/CN 完整礼装数据；后续运行按独立游标增量刷新，并从有效 raw 重建所有精简文件。最后一步会重建全部六份汇总并刷新活动道具，需要已有完整数据目录及网络访问。`combine:ces` 可以独立离线重建，但需要 raw 与两个地区的活动索引。
 
 ## 汇总格式
 
@@ -49,7 +49,7 @@ npm run resources:sync
 
 ### 从者归属
 
-`bondEquipOwner`、`valentineEquipOwner` 是 Atlas 内部从者 ID，无关联时为 null。使用 `resources/servants.json` 的 `id` 关联名称；礼装的 `collectionNo` 用于查找资源目录。
+`bondEquipOwner`、`valentineEquipOwner` 是 Atlas 内部从者 ID，无关联时为 null。使用 `assets/catalogs/servants.json` 的 `id` 关联名称；礼装的 `collectionNo` 用于查找资源目录。
 
 从者可以对应多张礼装，例如玛修有多张牵绊礼装。`buildCraftEssenceOwnerIndex(ces, region)` 提供反向查询辅助函数，返回按内部从者 ID 索引的 Map，每项包含 `bondEquipIds`、`valentineEquipIds` 两个内部礼装 ID 数组。客户端也可按汇总的 owner 字段筛选。
 
@@ -74,7 +74,7 @@ npm run resources:sync
 
 午餐时光普通/满破为 2%/10%；午茶时光为 1%/5%，助战为 3%/15%。多个条目不能直接相加：普通和满破可能互相替代，特性与关卡条件也需要由使用方判断。无法解析的牵绊数值会让生成失败。
 
-从者精简文件的 `traits` 保留基础特性的 `{ id, name }`，客户端汇总 `resources/servants.json` 整体保留缩进换行，特性仅保留单行的纯 ID 数组，例如 `traits.JP: [203, 304]`，直接匹配数组中的 ID。精简文件中的名称沿用 Atlas 原值，例如 `{ "id": 304, "name": "alignmentEvil" }`。以“异星之神”（9408800）为例，其 `functvals` 为 304（恶）和 203（星属性），这张礼装在目标从者包含任意一个 ID 时生效。缺少地区特性数据时为 null，不能按“不符合条件”处理。形态覆写及带条件的额外特性见下节；它们不预先合并进基础特性。
+从者精简文件的 `traits` 保留基础特性的 `{ id, name }`，客户端汇总 `assets/catalogs/servants.json` 每个从者保留一行，特性仅保留纯 ID 数组，例如 `traits.JP: [203, 304]`，直接匹配数组中的 ID。精简文件中的名称沿用 Atlas 原值，例如 `{ "id": 304, "name": "alignmentEvil" }`。以“异星之神”（9408800）为例，其 `functvals` 为 304（恶）和 203（星属性），这张礼装在目标从者包含任意一个 ID 时生效。缺少地区特性数据时为 null，不能按“不符合条件”处理。形态覆写及带条件的额外特性见下节；它们不预先合并进基础特性。
 
 ### 量子（QP）加成
 

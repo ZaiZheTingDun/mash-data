@@ -51,13 +51,13 @@ const slotKeys: SlotKey[] = ["1", "2", "3"];
 const targets: RegionTarget[] = [
   {
     region: "JP",
-    variantsFile: "assets/servants_variants.json",
+    variantsFile: "assets/catalogs/servants_variants.json",
     servantFile: "servant.json",
     skillFile: "skill.json",
   },
   {
     region: "CN",
-    variantsFile: "assets/servants_variants_cn.json",
+    variantsFile: "assets/catalogs/servants_variants_cn.json",
     servantFile: "servant-cn.json",
     skillFile: "skill_cn.json",
   },

@@ -11,7 +11,8 @@
     "test:generate-servants": "node --import tsx --test test/generate-servants.test.ts",
     "test:servant-variants": "node --import tsx --test test/servant-variants.test.ts",
     "verify:all": "node --import tsx src/verify-all.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:catalogs": "node --import tsx --test test/generate-servants.test.ts test/resource-catalogs.test.ts test/generate-catalogs.test.ts"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

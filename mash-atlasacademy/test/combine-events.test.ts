@@ -33,6 +33,10 @@ test("invalid or missing region cache cannot replace the published catalog", asy
   await writeJsonAtomic(files.CN, [event(1, "CN")]);
   await combineEvents({ eventIndexFiles: files, output });
   const before = await readFile(output, "utf8");
+  const published = JSON.parse(before);
+  assert.equal(published.schemaVersion, 2);
+  assert.equal(published.events[0].nameCN, "CN");
+  assert.equal(published.events[0].JP.startedAt, 10);
   await writeJsonAtomic(files.CN, [{ ...event(1, "CN"), warIds: [0] }]);
   await assert.rejects(combineEvents({ eventIndexFiles: files, output }), /Invalid CN event index entry/);
   assert.equal(await readFile(output, "utf8"), before);

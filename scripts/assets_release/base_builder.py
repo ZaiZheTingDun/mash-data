@@ -61,7 +61,7 @@ class BaseBuilder:
             BasePackSpec(
                 name="assets-json",
                 output_name="assets-json",
-                roots=(self.assets_root / "servants", self.assets_root / "ces", self.assets_root / "events"),
+                roots=(self.assets_root / "servants", self.assets_root / "ces", self.assets_root / "catalogs", self.assets_root / "events"),
                 extensions=(".json",),
             ),
             BasePackSpec(

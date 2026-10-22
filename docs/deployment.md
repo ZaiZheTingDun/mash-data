@@ -111,9 +111,9 @@ dist/assets-release/
 
 每个 ZIP 带有 `.zip.sha256` 校验文件。基础 ZIP 内含 `pack-manifest.json`，记录文件路径、大小和 SHA-256；补丁 ZIP 内含新增和修改文件、`patch-manifest.json` 及 `deletes.json`。
 
-受管理文件为 `assets/` 下 `servants`、`ces`、`events`、`icons`、`mystic-codes`、`skills` 目录中的 JSON 和 PNG/WebP/JPG/JPEG 图片。ZIP 内路径相对于 `assets/`，例如 `assets/servants/1/servant.json` 打包为 `servants/1/servant.json`。
+受管理文件为 `assets/` 下 `servants`、`ces`、`catalogs`、`icons`、`mystic-codes`、`skills` 目录中的 JSON 和 PNG/WebP/JPG/JPEG 图片。ZIP 内路径相对于 `assets/`，例如 `assets/servants/1/servant.json` 打包为 `servants/1/servant.json`。
 
-`servant-raw.json`、`servant-cn-raw.json`、`craft-essence-raw.json`、`craft-essence-cn-raw.json` 和 `.DS_Store` 会被排除。`resources/`、分析报告及 `assets/` 根目录的汇总文件也不属于这组打包目录。raw 排除规则同样适用于补丁、离线包和资源状态清单。
+`servant-raw.json`、`servant-cn-raw.json`、`craft-essence-raw.json`、`craft-essence-cn-raw.json` 和 `.DS_Store` 会被排除。分析报告和旧 `assets/` 根目录汇总不打包；六个客户端汇总位于 `assets/catalogs/`，进入 `assets-json` 基础包、增量补丁、离线包及资源状态清单，ZIP 内路径为 `catalogs/<文件名>`。raw 排除规则同样适用于补丁、离线包和资源状态清单。
 
 `latest.json` 指向最新发布清单，并携带当前资源状态文件的路径、SHA-256 和大小。
 

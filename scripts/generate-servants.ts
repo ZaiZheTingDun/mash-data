@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { readdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { requireDataRoot } from "../shared/data-paths.ts";
+import { formatResourceJson } from "../shared/resource-json.ts";
 import type { ServantTrait, ServantTraitAddition, ServantTraitOverrides } from "../mash-atlasacademy/src/types.ts";
 
 interface NameOverrides {
@@ -78,7 +79,7 @@ interface ResourceServant {
 const explicitPaths = process.argv[2] !== undefined && process.argv[3] !== undefined;
 const rootDir = explicitPaths ? process.cwd() : requireDataRoot();
 
-const outputPath = resolve(rootDir, process.argv[2] ?? "resources/servants.json");
+const outputPath = resolve(rootDir, process.argv[2] ?? "assets/catalogs/servants.json");
 const servantsDir = resolve(rootDir, process.argv[3] ?? "assets/servants");
 
 const CARD_BY_ID: Record<string, string> = {
@@ -411,13 +412,8 @@ for (const collectionNo of collectionNos) {
   servants.push(buildEntry(jpServant, cnServant));
 }
 
-// Keep the file readable while trait ID lists stay on one line. These keys
-// identify base regional lists, conditional traits, and numeric form IDs.
-const outputJson = JSON.stringify(servants, null, 2).replace(
-  /("(?:JP|CN|trait|\d+)": )\[\n\s+(-?\d+(?:,\n\s+-?\d+)*)\n\s*\]/g,
-  (_match: string, key: string, numbers: string) => `${key}[${numbers.split(/,\s*/).join(", ")}]`,
-);
-await writeFile(outputPath, `${outputJson}\n`, "utf8");
+await mkdir(dirname(outputPath), { recursive: true });
+await writeFile(outputPath, formatResourceJson(servants), "utf8");
 
 console.log(`Generated ${servants.length} servants -> ${outputPath}`);
 if (missingCn.length > 0) {

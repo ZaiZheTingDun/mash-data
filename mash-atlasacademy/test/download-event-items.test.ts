@@ -47,7 +47,10 @@ test("downloads only JP icons once and skips existing images on subsequent metad
   cnName = "更新后的名称";
   await downloadEventItems(options);
   assert.equal(urls.length, 1);
-  assert.equal(JSON.parse(await readFile(output, "utf8")).regions.CN[0].name, cnName);
+  const published = JSON.parse(await readFile(output, "utf8"));
+  assert.equal(published.schemaVersion, 2);
+  assert.equal(published.items[0].nameCN, cnName);
+  assert.equal(published.items[0].detail, undefined);
 });
 
 test("failed or empty downloads leave no final or partial icon and preserve the old catalog", async t => {

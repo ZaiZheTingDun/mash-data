@@ -88,7 +88,14 @@ def fixture(root: Path) -> None:
     write_json(root / "assets" / "version.json", {"version": 1})
     write_json(root / "assets" / "manifest.json", {"keep": "private manifest"})
     write_json(root / "state" / "atlas-data-version.json", {"JP": {"hash": "before"}})
-    write_json(root / "resources" / "servants.json", {"id": 1})
+    for name in ("servants.json", "servants_variants.json", "servants_variants_cn.json", "craft_essences.json"):
+        write_json(root / "assets" / "catalogs" / name, [{"id": 1}])
+    dates = {"noticeAt": 0, "startedAt": 1, "endedAt": 2, "finishedAt": 3}
+    write_json(root / "assets/catalogs/events.json", {"schemaVersion": 2, "events": [
+        {"id": 1, "type": "eventQuest", "name": "JP", "nameCN": None, "warIds": [], "JP": dates, "CN": None}]})
+    write_json(root / "assets/catalogs/event_items.json", {"schemaVersion": 2, "items": [
+        {"id": 1, "type": "eventItem", "name": "JP", "nameCN": None, "background": "gold", "icon": None,
+         "missingIcon": "https://static.atlasacademy.io/JP/Items/1.png"}]})
     write_json(root / "verification" / "result" / "result.json", {"ok": True})
     (root / ".gitignore").write_text("dist/\n")
     subprocess.run(["git", "init", "-q", str(root)], check=True)
@@ -114,6 +121,45 @@ class PipelineTests(unittest.TestCase):
 
     def next_version(self):
         write_json(self.root / "assets" / "skills" / "1" / "data.json", {"id": 2})
+
+    def test_catalogs_are_in_base_offline_state_and_incremental_patches(self):
+        names = {f"catalogs/{name}" for name in (
+            "servants.json", "servants_variants.json", "servants_variants_cn.json",
+            "craft_essences.json", "events.json", "event_items.json")}
+        self.assertTrue(names.issubset(scan_asset_entries(self.root)))
+        self.release_base()
+        with zipfile.ZipFile(self.root / "dist/assets-release/base/v1/assets-json-v1.zip") as archive:
+            self.assertTrue(names.issubset(archive.namelist()))
+            manifest = json.loads(archive.read("pack-manifest.json"))
+            self.assertTrue(names.issubset({entry["path"] for entry in manifest["files"]}))
+        offline = BaseBuilder(self.root).build_offline_bundle()
+        with zipfile.ZipFile(offline.path) as archive:
+            self.assertTrue(names.issubset(archive.namelist()))
+            self.assertFalse(any(name.startswith("resources/") for name in archive.namelist()))
+        state = json.loads(self.store.objects["states/asset-state-v1.json"])
+        self.assertTrue(names.issubset({entry["path"] for entry in state["files"]}))
+        updated = [{"id": 1, "name": "updated"}]
+        write_json(self.root / "assets/catalogs/craft_essences.json", updated)
+        prepare(self.root, self.store, "patch")
+        with zipfile.ZipFile(self.root / "dist/assets-release/patches/v1-to-v2.zip") as archive:
+            self.assertEqual(json.loads(archive.read("catalogs/craft_essences.json")), updated)
+            self.assertNotIn("catalogs/servants.json", archive.namelist())
+
+    def test_validator_rejects_missing_catalogs_and_invalid_merged_items(self):
+        path = self.root / "assets/catalogs/servants.json"
+        path.unlink()
+        with self.assertRaisesRegex(ValueError, "missing catalog"):
+            validate_assets(self.root)
+        write_json(path, [{"id": 1}, {"id": 1}])
+        with self.assertRaisesRegex(ValueError, "duplicate catalog ID"):
+            validate_assets(self.root)
+        write_json(path, [{"id": 1}])
+        path = self.root / "assets/catalogs/event_items.json"
+        catalog = json.loads(path.read_text())
+        catalog["items"][0]["detail"] = "must not be published"
+        write_json(path, catalog)
+        with self.assertRaisesRegex(ValueError, "invalid merged event item"):
+            validate_assets(self.root)
 
     def test_raw_caches_are_excluded_from_all_packages_states_and_publication(self):
         raw_paths = [
@@ -462,7 +508,7 @@ class PipelineTests(unittest.TestCase):
             ("M", "assets/mystic-codes/1/mystic-code-cn.json", "魔术礼装 JSON"),
             ("A", "assets/mystic-codes/1/item-male.png", "魔术礼装图片"),
             ("M", "assets/craft_essences.json", "资源汇总"),
-            ("M", "resources/servants.json", "客户端资源"),
+            ("M", "assets/catalogs/servants.json", "客户端资源"),
             ("M", "state/atlas-data-version.json", "Atlas 更新游标"),
             ("M", "state/atlas-ce-data-version.json", "Atlas 更新游标"),
             ("M", "verification/result/runtime-skills.json", "分析报告"),
@@ -503,9 +549,9 @@ class PipelineTests(unittest.TestCase):
         manifest = read_release_manifest(self.root, 1)
         source_commit = manifest["source"]["dataCommit"]
         # Simulate data committed to private after the release's original snapshot.
-        resource_path = self.root / "resources" / "servants.json"
+        resource_path = self.root / "assets" / "catalogs" / "servants.json"
         write_json(resource_path, {"newerData": True})
-        git(self.root, "add", "--", "resources/servants.json")
+        git(self.root, "add", "--", "assets/catalogs/servants.json")
         git(self.root, "commit", "-qm", "new data while publishing")
         version_before = (self.root / "assets" / "version.json").read_bytes()
         state_before = (self.root / "state" / "atlas-data-version.json").read_bytes()
@@ -537,7 +583,7 @@ class PipelineTests(unittest.TestCase):
         self.release_base()
         manifest = read_release_manifest(self.root, 1)
         git(self.root, "sparse-checkout", "set", "--no-cone", "/assets/manifest.json", "/assets/version.json")
-        self.assertFalse((self.root / "resources" / "servants.json").exists())
+        self.assertFalse((self.root / "assets" / "catalogs" / "servants.json").exists())
         self.assertTrue(sync_manifest(self.root, self.store, 1, manifest["source"]["dataCommit"]))
         self.assertEqual(git(self.root, "diff", "--cached", "--name-only").splitlines(), ["assets/manifest.json"])
 
@@ -576,8 +622,8 @@ class PipelineTests(unittest.TestCase):
     def test_manifest_sync_preserves_staged_work_and_newer_private_manifest(self):
         self.release_base()
         source_commit = read_release_manifest(self.root, 1)["source"]["dataCommit"]
-        write_json(self.root / "resources" / "servants.json", {"changed": True})
-        git(self.root, "add", "--", "resources/servants.json")
+        write_json(self.root / "assets/catalogs/servants.json", [{"id": 1, "changed": True}])
+        git(self.root, "add", "--", "assets/catalogs/servants.json")
         with self.assertRaisesRegex(ValueError, "empty index"):
             sync_manifest(self.root, self.store, 1, source_commit)
         git(self.root, "commit", "-qm", "data")

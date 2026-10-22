@@ -1,3 +1,5 @@
+import { buildEventItemResources } from "../../shared/catalog-builders.ts";
+import { formatResourceJson } from "../../shared/resource-json.ts";
 import { rename, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { requireDataRoot } from "../../shared/data-paths.ts";
@@ -7,26 +9,8 @@ import { DownloadHttpError, downloadFile, ensureDir, writeJsonAtomic } from "./f
 import { EVENT_ITEMS_FILE, ITEM_ICONS_DIR } from "./paths.js";
 import type { Region } from "./types.js";
 
-export const EVENT_ITEM_TYPES = [
-  "eventItem", "eventPoint", "boostItem", "dice", "eventPassiveSkillGiven",
-] as const;
-
-export interface EventItem {
-  id: number;
-  type: typeof EVENT_ITEM_TYPES[number];
-  name: string;
-  detail: string;
-  background: string;
-  /** Path relative to assets; shared between JP and CN. */
-  icon: string | null;
-  /** Set only when Atlas returns HTTP 404; retried on the next run. */
-  missingIcon?: string;
-}
-
-export interface EventItemsCatalog {
-  schemaVersion: 1;
-  regions: Record<Region, EventItem[]>;
-}
+import { EVENT_ITEM_TYPES, type EventItem, type EventItemsCatalog } from "../../shared/event-catalogs.ts";
+export { EVENT_ITEM_TYPES, type EventItem, type EventItemsCatalog } from "../../shared/event-catalogs.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -120,7 +104,7 @@ export async function downloadEventItems(options: {
     }
   }
   // Only available images are referenced; upstream 404s stay explicit in metadata.
-  await writeJsonAtomic(options.output ?? EVENT_ITEMS_FILE, catalog);
+  await writeJsonAtomic(options.output ?? EVENT_ITEMS_FILE, buildEventItemResources(catalog), { format: formatResourceJson });
   console.log(`Event items: JP=${catalog.regions.JP.length} CN=${catalog.regions.CN.length} icons=${filenames.length}`);
   return catalog;
 }

@@ -1,7 +1,7 @@
 import { requireDataRoot } from "../../shared/data-paths.ts";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { fileExists, readJson, writeJson } from "./fs-utils.js";
+import { fileExists, readJson, writeJsonAtomic } from "./fs-utils.js";
 import {
   SERVANTS_DIR,
   SERVANTS_VARIANTS_CN_FILE,
@@ -200,7 +200,7 @@ export async function combineServantVariants(): Promise<void> {
     }
 
     servants.sort((a, b) => a.id - b.id);
-    await writeJson(target.outputFile, servants);
+    await writeJsonAtomic(target.outputFile, servants, { arrayItemPerLine: true });
 
     console.log(
       `Combined ${target.label} servant variants. written=${servants.length} skipped=${skipped} failed=${failed} output=${target.outputFile}`,
