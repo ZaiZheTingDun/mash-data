@@ -1,23 +1,12 @@
+import { buildEventResources } from "../../shared/catalog-builders.ts";
+import { formatResourceJson } from "../../shared/resource-json.ts";
 import { requireDataRoot } from "../../shared/data-paths.ts";
 import { readJson, writeJsonAtomic } from "./fs-utils.js";
 import { EVENTS_CATALOG_FILE, EVENT_INDEX_FILES } from "./paths.js";
 import type { Region } from "./types.js";
 
-export interface CatalogEvent {
-  id: number;
-  type: string;
-  name: string;
-  noticeAt: number;
-  startedAt: number;
-  endedAt: number;
-  finishedAt: number;
-  warIds: number[];
-}
-
-export interface EventCatalog {
-  schemaVersion: 1;
-  regions: Record<Region, CatalogEvent[]>;
-}
+import type { CatalogEvent, EventCatalog } from "../../shared/event-catalogs.ts";
+export type { CatalogEvent, EventCatalog } from "../../shared/event-catalogs.ts";
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -63,7 +52,7 @@ export async function combineEvents(options: {
     JP: await readJson<unknown>(files.JP),
     CN: await readJson<unknown>(files.CN),
   });
-  await writeJsonAtomic(options.output ?? EVENTS_CATALOG_FILE, catalog);
+  await writeJsonAtomic(options.output ?? EVENTS_CATALOG_FILE, buildEventResources(catalog), { format: formatResourceJson });
   console.log(`Combined events. JP=${catalog.regions.JP.length} CN=${catalog.regions.CN.length}`);
   return catalog;
 }

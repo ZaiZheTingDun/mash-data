@@ -10,9 +10,9 @@
 
 | 命令 | 输入 | 用途 |
 | --- | --- | --- |
-| `npm run verify:resources` | 自动创建的临时测试数据 | 验证从者资源生成规则，无需私有数据 |
+| `npm run verify:catalogs` | 自动创建的临时测试数据 | 验证从者汇总、地区合并与目录生成，无需私有数据 |
 | `npm run verify:variants` | 数据目录中的 JP/CN 从者、形态汇总和技能依赖 | 检查形态技能的来源、名称与图标元数据 |
-| `npm run verification:generate` | 从者缓存、JP raw、技能依赖及 `resources/servants_variants.json` | 生成全部四类分析报告 |
+| `npm run verification:generate` | 从者缓存、JP raw、技能依赖及 `assets/catalogs/servants_variants.json` | 生成全部四类分析报告 |
 | `npm run verify:variant-skill-target-types` | 资源形态汇总及对应从者、技能数据 | 单独生成同槽技能目标选择差异报告 |
 | `npm --prefix verification run typecheck` | 源码 | TypeScript 类型检查 |
 
@@ -52,13 +52,13 @@ npm run verify:variant-skill-target-types
 
 ## 开发与排查
 
-源码位于 `src/`，测试位于 `test/`。修改资源生成规则时运行 `verify:resources`；修改形态或技能依赖规则时，也运行 Atlas 模块单元测试，并在有完整数据时执行 `verify:variants`。
+源码位于 `src/`，测试位于 `test/`。修改资源生成规则时运行 `verify:catalogs`；修改形态或技能依赖规则时，也运行 Atlas 模块单元测试，并在有完整数据时执行 `verify:variants`。
 
 常见问题：
 
 - **提示 `MASH_DATA_ROOT is required`**：在当前终端配置数据目录，再运行真实数据命令。
 - **缺少 raw 或技能 JSON**：先补齐上游缓存与运行时依赖，参见 [Atlas 数据工具](../mash-atlasacademy/README.md)。
-- **缺少资源形态汇总**：报告需要已有 `resources/servants_variants.json`；已有 `assets/` 汇总时可执行 `npm run resources:sync` 更新资源。
+- **缺少资源形态汇总**：报告需要已有 `assets/catalogs/servants_variants.json`；可执行 `npm run atlas:combine-variants` 重新生成。
 - **技能来源或元数据断言失败**：保留报错中的从者、槽位与技能 ID，检查对应的 JP/CN 源数据及汇总生成顺序。
 
 提交问题时优先附上最小输入和报错信息，生成报告留在自己的数据目录中。

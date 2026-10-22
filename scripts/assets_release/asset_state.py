@@ -7,7 +7,7 @@ from .json_utils import read_json_bytes, to_json_bytes, utc_timestamp
 from .models import FileEntry
 
 IMAGE_EXTENSIONS = (".png", ".webp", ".jpg", ".jpeg")
-ASSET_ROOTS = ("servants", "ces", "events", "icons", "mystic-codes", "skills")
+ASSET_ROOTS = ("servants", "ces", "catalogs", "events", "icons", "mystic-codes", "skills")
 ASSET_EXTENSIONS = (".json", *IMAGE_EXTENSIONS)
 IGNORED_ASSET_NAMES = {".DS_Store"}
 RAW_JSON_NAMES = {

@@ -19,8 +19,8 @@
 1. 安装工具依赖，运行类型检查与临时数据测试。
 2. 拉取 private 数据分支，沿用已有 `state/atlas-data-version.json`，不清空缓存或重置游标。
 3. 补齐魔术礼装，运行 `npm start` 更新从者、概念礼装、runtime skill、variants 和客户端资源，再补齐技能图标。
-4. 根据更新后的 resources 重新生成分析报告，检查资源分包是否齐全、JSON 是否有效、图片能否解码及已知图片/技能图标引用是否缺失。
-5. 暂存 `assets/`、`resources/`、`state/`、`verification/result/` 的增删改，在 private 创建 `state/updates/<run-id>-<attempt>.json`。
+4. 根据更新后的 `assets/catalogs/` 重新生成分析报告，检查资源分包是否齐全、JSON 是否有效、图片能否解码及已知图片/技能图标引用是否缺失。
+5. 暂存 `assets/`、`state/`、`verification/result/` 的增删改，在 private 创建 `state/updates/<run-id>-<attempt>.json`。
 6. 将数据和记录一起提交、推送回同一 private 分支。没有文件变化时不创建记录或空提交。
 
 每条变更记录保存运行链接、工具 commit、更新前 private commit、JP/CN state 前后值、A/M/D 总数、`countsByResource` 分类数量以及完整文件路径清单。记录列出的文件不包含记录自身；需要查看具体字段差异时，对比该提交与父提交。

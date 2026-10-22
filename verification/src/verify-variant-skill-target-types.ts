@@ -81,7 +81,7 @@ async function loadSkillSource(
 
 async function main(): Promise<void> {
   const variants = await readJson<ServantVariants[]>(
-    path.join(repoRoot, "resources", "servants_variants.json"),
+    path.join(repoRoot, "assets", "catalogs", "servants_variants.json"),
   );
   const rows: VariantTargetMismatch[] = [];
 

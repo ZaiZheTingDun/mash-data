@@ -15,16 +15,16 @@
     "verify:variants": "npm --prefix verification run test:servant-variants",
     "verification:generate": "npm --prefix verification run verify:all",
     "verify:variant-skill-target-types": "npm --prefix verification run verify:variant-skill-target-types",
-    "verify:resources": "npm --prefix verification run test:generate-servants",
-    "data:atlas": "npm run atlas:start && npm run atlas:combine-events && npm run atlas:download-event-items && npm run atlas:download-runtime-skills && npm run atlas:build-variants && npm run atlas:combine-variants && npm run verify:variants && npm run verification:generate && npm run atlas:combine-ces",
+    "data:atlas": "npm run atlas:start && npm run atlas:download-runtime-skills && npm run catalogs:generate && npm run verify:variants && npm run verification:generate",
     "verify:all": "npm --prefix verification run verify:all",
     "test:integrity": "npm --prefix verification run test:servant-variants",
-    "resources:generate-atlas-servants": "node scripts/generate-servants.ts",
-    "resources:sync": "node scripts/sync-resources.ts && npm run verify:variant-skill-target-types",
     "assets:offline-base": "python3 scripts/release.py offline-base",
     "assets:deploy": "bash scripts/deploy-assets-release.sh",
-    "start": "npm run data:atlas && npm run resources:sync",
-    "typecheck:scripts": "npm --prefix verification exec -- tsc -p tsconfig.json"
+    "start": "npm run data:atlas",
+    "typecheck:scripts": "npm --prefix verification exec -- tsc -p tsconfig.json",
+    "verify:catalogs": "npm --prefix verification run test:catalogs",
+    "catalogs:generate-servants": "node scripts/generate-servants.ts",
+    "catalogs:generate": "npm run atlas:build-variants && npm run atlas:combine-variants && npm run atlas:combine-ces && npm run atlas:combine-events && npm run atlas:download-event-items && npm run catalogs:generate-servants"
   },
   "type": "module",
   "engines": {

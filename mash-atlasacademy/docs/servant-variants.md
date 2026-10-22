@@ -16,7 +16,7 @@ npm run verify:variants
 
 [build-variants.ts](../src/build-variants.ts) 扫描数据目录中的 `assets/servants/<collectionNo>/`，从 `servant.json` / `servant-cn.json` 分别生成静态文件 `servant_variants.json` / `servant_variants_cn.json`。
 
-[combine-variants.ts](../src/combine-variants.ts) 追加运行时技能并汇总到 `assets/servants_variants.json` 和 `assets/servants_variants_cn.json`。`npm run resources:sync` 再将汇总复制到 `resources/`。
+[combine-variants.ts](../src/combine-variants.ts) 追加运行时技能并汇总到 `assets/catalogs/servants_variants.json` 和 `assets/catalogs/servants_variants_cn.json`，每个从者一行；汇总随 `assets-json`、增量补丁及离线包发布。
 
 ## 输出格式
 

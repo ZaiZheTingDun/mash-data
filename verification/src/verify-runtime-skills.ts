@@ -86,8 +86,8 @@ function findMatchingRuntimeSkill(
 
 async function main(): Promise<void> {
   const [jpServants, cnServants] = await Promise.all([
-    readJson<ServantVariants[]>(path.join(repoRoot, "assets", "servants_variants.json")),
-    readJson<ServantVariants[]>(path.join(repoRoot, "assets", "servants_variants_cn.json")),
+    readJson<ServantVariants[]>(path.join(repoRoot, "assets", "catalogs", "servants_variants.json")),
+    readJson<ServantVariants[]>(path.join(repoRoot, "assets", "catalogs", "servants_variants_cn.json")),
   ]);
 
   const cnRuntime = new Map<string, RuntimeSkillAssignment[]>();

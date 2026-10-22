@@ -197,7 +197,7 @@ test("resource generation includes ascension-overridden Noble Phantasm names", a
   }
 });
 
-test("resource traits use inline ID arrays within formatted JSON, preserving empty sets and missing CN", async (t) => {
+test("resource servants use one record per line, preserving empty traits and missing CN", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "mash-servant-traits-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const servantsDir = path.join(root, "servants");
@@ -217,10 +217,12 @@ test("resource traits use inline ID arrays within formatted JSON, preserving emp
   }
   await execFileAsync(process.execPath, [path.join(repoRoot, "scripts/generate-servants.ts"), output, servantsDir], { cwd: repoRoot });
   const text = await readFile(output, "utf8");
-  assert.ok(text.startsWith("[\n  {\n"));
+  const lines = text.trimEnd().split("\n");
+  assert.equal(lines.length, 5);
+  for (const line of lines.slice(1, -1)) assert.doesNotThrow(() => JSON.parse(line.replace(/,$/, "")));
   assert.ok(text.endsWith("\n"));
-  assert.ok(text.includes('"JP": [203, 304]'));
-  assert.ok(text.includes('"CN": [203]'));
+  assert.ok(text.includes('"JP":[203,304]'));
+  assert.ok(text.includes('"CN":[203]'));
   const generated = JSON.parse(text);
   assert.ok(Array.isArray(generated));
   assert.ok(generated.every((entry: Record<string, unknown>) => !Object.hasOwn(entry, "traitIds")));
@@ -261,9 +263,9 @@ test("resource form trait overrides retain source numbering and conditional addi
   }
   await execFileAsync(process.execPath, [path.join(repoRoot, "scripts/generate-servants.ts"), output, servantsDir], { cwd: repoRoot });
   const text = await readFile(output, "utf8");
-  assert.ok(text.includes('"1": [304]'));
-  assert.ok(text.includes('"100130": [203]'));
-  assert.ok(text.includes('"trait": [2919]'));
+  assert.ok(text.includes('"1":[304]'));
+  assert.ok(text.includes('"100130":[203]'));
+  assert.ok(text.includes('"trait":[2919]'));
   const generated = JSON.parse(text);
   assert.deepEqual(generated.map((entry: { traits: { JP: unknown } }) => entry.traits.JP), [[201], [201], [201]]);
   assert.deepEqual(generated.map((entry: { traitOverrides: unknown }) => entry.traitOverrides), [

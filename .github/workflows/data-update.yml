@@ -54,7 +54,7 @@ jobs:
           npm --prefix mash-atlasacademy run typecheck
           npm --prefix verification run typecheck
           npm --prefix mash-atlasacademy test
-          npm run verify:resources
+          npm run verify:catalogs
           python -m unittest discover -s scripts/tests -v
 
       - name: Check out private data branch
@@ -67,7 +67,7 @@ jobs:
           persist-credentials: true
           fetch-depth: 1
 
-      - name: Update Atlas data and generated resources
+      - name: Update Atlas data and generated catalogs
         env:
           MASH_DATA_ROOT: ${{ github.workspace }}/private-data
         run: |

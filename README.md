@@ -60,7 +60,7 @@ npm run typecheck:scripts
 npm --prefix mash-atlasacademy run typecheck
 npm --prefix verification run typecheck
 npm --prefix mash-atlasacademy test
-npm run verify:resources
+npm run verify:catalogs
 ```
 
 `npm --prefix mash-atlasacademy run build` 可检查编译产物，输出位于该模块的 `dist/`。源码入口可直接运行，无需先编译。
@@ -86,7 +86,7 @@ $env:MASH_DATA_ROOT = 'C:\path\to\mash-data-private'
 ```text
 数据根目录/
 ├── assets/                  # Atlas 缓存、图片、汇总及发布版本配置
-├── resources/               # 客户端资源 JSON
+│   └── catalogs/            # 六个客户端汇总 JSON，随 assets-json 打包
 ├── state/
 │   └── atlas-data-version.json
 ├── verification/
@@ -106,7 +106,7 @@ $env:MASH_DATA_ROOT = 'C:\path\to\mash-data-private'
 npm start
 ```
 
-完整流程依次执行：下载从者和礼装 → 生成活动目录、刷新活动道具及共用图标 → 下载技能切换依赖 → 生成并汇总 JP/CN 形态 → 检查形态并生成报告 → 汇总礼装 → 生成和同步客户端资源 → 更新形态技能目标差异报告。
+完整流程依次执行：下载从者和礼装 → 下载技能切换依赖 → catalogs:generate 生成六份汇总并补齐活动道具图标 → 检查形态 → 基于最新汇总生成四类报告。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -114,13 +114,17 @@ npm start
 | `npm run data:atlas` | 更新 Atlas 数据、生成汇总、检查形态并生成报告 |
 | `npm run verify:variants` | 检查真实数据中 JP/CN 形态的技能来源、名称和图标元数据 |
 | `npm run verification:generate` | 生成四类分析报告 |
-| `npm run resources:generate-atlas-servants` | 生成 `resources/servants.json` |
-| `npm run resources:sync` | 生成从者资源、复制形态、礼装汇总、活动目录及道具，再生成目标差异报告 |
+| `npm run catalogs:generate-servants` | 生成 `assets/catalogs/servants.json` |
+| `npm run catalogs:generate` | 生成从者、JP/CN 形态、礼装、活动和道具六份汇总 |
 | `npm run atlas:combine-events` | 从本地 JP/CN 活动索引生成活动目录 |
 | `npm run atlas:download-event-items` | 刷新双服活动道具数据并补齐共用图标，见 [活动数据](docs/events.md) |
 | `npm run assets:offline-base` | 构建供手动导入的离线资源包 |
 
-`data:atlas` 中的报告步骤会读取已有 `resources/`。下载、汇总和检查可以单独执行，但需满足各步骤的输入要求。`verify:all` 是报告生成命令的别名，并不运行所有测试。
+所有客户端汇总统一放在 `assets/catalogs/`，包内路径为 `catalogs/<文件名>`，文件包括 `servants.json`、`servants_variants.json`、`servants_variants_cn.json`、`craft_essences.json`、`events.json` 和 `event_items.json`。基础包、增量补丁、离线包及资源状态清单均包含这些文件。App 应从当前资源目录的 `catalogs/` 读取汇总，按需读取 `servants/`、`ces/` 等详情。
+
+`npm run catalogs:generate` 从现有从者详情、礼装 raw 和活动索引重建汇总，并刷新活动道具元数据；无需预先存在 `assets/catalogs/` 或汇总 JSON。道具元数据需要访问 Atlas Academy，已有非空图标会复用。完整流程 `npm start` 先更新源数据，再执行此命令；生成结果保持每条记录一行。
+
+`data:atlas` 在全部汇总生成后读取 `assets/catalogs/` 生成报告。下载、汇总和检查可以单独执行，但需满足各步骤的输入要求。`verify:all` 是报告生成命令的别名，并不运行所有测试。
 
 更新策略见 [数据获取与缓存](docs/data-fetch-strategy.md)，完整打包与上传说明见 [资源构建与部署](docs/deployment.md)。
 

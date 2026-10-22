@@ -33,10 +33,10 @@ export async function writeJson(filePath: string, data: unknown): Promise<void> 
 export async function writeJsonAtomic(
   filePath: string,
   data: unknown,
-  options: { arrayItemPerLine?: boolean } = {},
+  options: { arrayItemPerLine?: boolean; format?: (data: unknown) => string } = {},
 ): Promise<void> {
   if (options.arrayItemPerLine && !Array.isArray(data)) throw new Error("Expected JSON array");
-  const serialized = options.arrayItemPerLine
+  const serialized = options.format ? options.format(data) : options.arrayItemPerLine
     ? `[\n${(data as unknown[]).map((item) => JSON.stringify(item)).join(",\n")}\n]`
     : JSON.stringify(data, null, 2);
   const dir = dirname(filePath);
