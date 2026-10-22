@@ -207,3 +207,69 @@ test("QP value conditions retain event restrictions and malformed values fail ex
   assert.throws(() => compactCraftEssence(broken), /no RateCount or AddCount/);
   assert.deepEqual(compactCraftEssence(equip(1)).qpBonuses, []);
 });
+
+
+test("master EXP preserves percentages, fixed amounts and MLB variants without mixing mystic-code EXP", () => {
+  const raw = equip(1, { skills: [
+    { id: 1, condLimitCount: 0, functions: [{ funcId: 90, funcType: "expUp", svals: [{ RateCount: 20 }] }] },
+    { id: 2, condLimitCount: 4, detail: "master EXP", functions: [{ funcId: 90, funcType: "expUp", svals: [{ RateCount: 100, EventId: 2 }], followerVals: [{ RateCount: 150, EventId: 2 }] }] },
+    { id: 3, condLimitCount: 0, functions: [{ funcId: 90, funcType: "expUp", svals: [{ AddCount: 50 }] }] },
+    { id: 4, condLimitCount: 0, functions: [{ funcId: 96, funcType: "userEquipExpUp", svals: [{ AddCount: 50 }] }] },
+  ] });
+  const full = compactCraftEssence(raw);
+  assert.deepEqual(full.masterExpBonuses?.map(b => [b.limitBreak, b.values[0]?.percent, b.values[0]?.flat]), [
+    [0, 2, null], [4, 10, null], [0, null, 50],
+  ]);
+  assert.equal(full.masterExpBonuses?.[1]?.supportValues?.[0]?.percent, 15);
+  assert.deepEqual(full.masterExpBonuses?.[1]?.values[0]?.conditions, { EventId: 2 });
+  assert.deepEqual(full.bondBonuses, []);
+  assert.deepEqual(full.qpBonuses, []);
+  const summary = craftEssenceSummary(full).masterExpBonuses!;
+  assert.equal(summary.length, 3);
+  assert.equal("detail" in summary[1]!, false);
+  assert.equal("conditions" in summary[1]!, false);
+  assert.deepEqual(compactCraftEssence(equip(2)).masterExpBonuses, undefined);
+});
+
+
+test("mystic-code EXP preserves its own percentages, fixed amounts, support and conditions", () => {
+  const full = compactCraftEssence(equip(1, { skills: [
+    { id: 1, condLimitCount: 0, functions: [{ funcId: 96, funcType: "userEquipExpUp", svals: [{ RateCount: 20 }] }] },
+    { id: 2, condLimitCount: 4, detail: "mystic-code EXP", functions: [{ funcId: 96, funcType: "userEquipExpUp", svals: [{ RateCount: 100, EventId: 2 }], followerVals: [{ RateCount: 150, EventId: 2 }] }] },
+    { id: 3, condLimitCount: 0, functions: [{ funcId: 96, funcType: "userEquipExpUp", svals: [{ AddCount: 50 }] }] },
+    { id: 4, condLimitCount: 0, functions: [{ funcId: 90, funcType: "expUp", svals: [{ AddCount: 20 }] }] },
+  ] }));
+  assert.deepEqual(full.mysticCodeExpBonuses?.map(b => [b.limitBreak, b.values[0]?.percent, b.values[0]?.flat]), [
+    [0, 2, null], [4, 10, null], [0, null, 50],
+  ]);
+  assert.equal(full.mysticCodeExpBonuses?.[1]?.supportValues?.[0]?.percent, 15);
+  assert.deepEqual(full.mysticCodeExpBonuses?.[1]?.values[0]?.conditions, { EventId: 2 });
+  assert.equal(full.masterExpBonuses?.length, 1);
+  assert.equal(full.masterExpBonuses?.[0]?.values[0]?.flat, 20);
+  const summary = craftEssenceSummary(full).mysticCodeExpBonuses!;
+  assert.equal(summary.length, 3);
+  assert.equal("detail" in summary[1]!, false);
+  assert.equal("conditions" in summary[1]!, false);
+  assert.equal(compactCraftEssence(equip(2)).mysticCodeExpBonuses, undefined);
+});
+
+
+test("friend points preserve stacking type, fixed values, MLB, support and event conditions", () => {
+  const full = compactCraftEssence(equip(36, { skills: [
+    { id: 1, condLimitCount: 0, functions: [{ funcId: 93, funcType: "friendPointUp", svals: [{ AddCount: 75 }] }] },
+    { id: 2, condLimitCount: 0, functions: [{ funcId: 5607, funcType: "friendPointUpDuplicate", svals: [{ AddCount: 5 }] }] },
+    { id: 3, condLimitCount: 4, detail: "stackable points", functions: [{ funcId: 5607, funcType: "friendPointUpDuplicate", svals: [{ AddCount: 25, EventId: 2 }], followerVals: [{ AddCount: 30, EventId: 2 }] }] },
+    { id: 4, condLimitCount: 4, functions: [{ funcId: 5136, funcType: "servantFriendshipUp", svals: [{ RateCount: 100 }] }] },
+  ] }));
+  assert.deepEqual(full.friendPointBonuses?.map(b => [b.functionType, b.limitBreak, b.values[0]?.flat]), [
+    ["friendPointUp", 0, 75], ["friendPointUpDuplicate", 0, 5], ["friendPointUpDuplicate", 4, 25],
+  ]);
+  assert.equal(full.friendPointBonuses?.[2]?.supportValues?.[0]?.flat, 30);
+  assert.deepEqual(full.friendPointBonuses?.[2]?.values[0]?.conditions, { EventId: 2 });
+  assert.equal(full.bondBonuses.length, 1);
+  const summary = craftEssenceSummary(full).friendPointBonuses!;
+  assert.equal(summary[2]?.functionType, "friendPointUpDuplicate");
+  assert.equal("detail" in summary[2]!, false);
+  assert.equal("conditions" in summary[2]!, false);
+  assert.equal(compactCraftEssence(equip(2)).friendPointBonuses, undefined);
+});

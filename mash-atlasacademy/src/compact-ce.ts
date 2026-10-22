@@ -10,6 +10,8 @@ export interface BondBonusValue {
 }
 
 export interface BondBonus {
+  /** Retained for reward types with different stacking behavior. */
+  functionType?: string;
   skillId: number;
   functionId: number;
   limitBreak: number;
@@ -54,6 +56,9 @@ export interface CraftEssenceSummary {
   valentineEquipOwner: number | null;
   bondBonuses: BondBonusSummary[];
   qpBonuses: QpBonusSummary[];
+  masterExpBonuses?: BondBonusSummary[];
+  mysticCodeExpBonuses?: BondBonusSummary[];
+  friendPointBonuses?: (BondBonusSummary & { functionType?: string })[];
   eventBonuses: EventBonusSummary[];
   events: Array<{ id: number }>;
 }
@@ -61,6 +66,9 @@ export interface CraftEssenceSummary {
 export interface CompactCraftEssence extends CraftEssenceSummary {
   bondBonuses: BondBonus[];
   qpBonuses: QpBonus[];
+  masterExpBonuses?: BondBonus[];
+  mysticCodeExpBonuses?: BondBonus[];
+  friendPointBonuses?: BondBonus[];
   eventBonuses: EventBonus[];
   events: Array<{ id: number; name: string | null }>;
   schemaVersion: 1;
@@ -179,6 +187,9 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
   const addEvent = (id: unknown) => { if (positiveId(id)) eventIds.add(id); };
   const bondBonuses: BondBonus[] = [];
   const qpBonuses: QpBonus[] = [];
+  const masterExpBonuses: BondBonus[] = [];
+  const mysticCodeExpBonuses: BondBonus[] = [];
+  const friendPointBonuses: BondBonus[] = [];
   const eventBonuses: EventBonus[] = [];
 
   for (const skill of raw.skills) {
@@ -240,12 +251,16 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
       }
       const isBond = func.funcType === "servantFriendshipUp";
       const isQp = func.funcType === "qpDropUp" || func.funcType === "qpUp";
-      if (!isBond && !isQp) continue;
+      const isMasterExp = func.funcType === "expUp";
+      const isMysticCodeExp = func.funcType === "userEquipExpUp";
+      const isFriendPoint = func.funcType === "friendPointUp" || func.funcType === "friendPointUpDuplicate";
+      if (!isBond && !isQp && !isMasterExp && !isMysticCodeExp && !isFriendPoint) continue;
       if (!positiveId(func.funcId)) throw new Error("Invalid reward bonus function ID");
       if (typeof skill.condLimitCount !== "number" || !Number.isInteger(skill.condLimitCount) || skill.condLimitCount < 0) {
         throw new Error("Invalid reward bonus limit break condition");
       }
-      (isBond ? bondBonuses : qpBonuses).push({
+      (isBond ? bondBonuses : isQp ? qpBonuses : isMasterExp ? masterExpBonuses : isMysticCodeExp ? mysticCodeExpBonuses : friendPointBonuses).push({
+        ...(isFriendPoint ? { functionType: String(func.funcType) } : {}),
         skillId: skill.id as number,
         functionId: func.funcId,
         limitBreak: skill.condLimitCount,
@@ -277,6 +292,9 @@ export function compactCraftEssence(raw: NiceEquip, events: BasicEvent[] = []): 
     valentineEquipOwner: raw.valentineEquipOwner ?? null,
     bondBonuses,
     qpBonuses,
+    ...(masterExpBonuses.length ? { masterExpBonuses } : {}),
+    ...(mysticCodeExpBonuses.length ? { mysticCodeExpBonuses } : {}),
+    ...(friendPointBonuses.length ? { friendPointBonuses } : {}),
     eventBonuses,
     events: [...eventIds].sort((a, b) => a - b).map((id) => ({ id, name: eventNames.get(id) ?? null })),
   };
@@ -292,6 +310,15 @@ export function craftEssenceSummary(ce: CompactCraftEssence): CraftEssenceSummar
     qpBonuses: ce.qpBonuses.map(({ skillId, functionId, limitBreak, values, supportValues }) => ({
       skillId, functionId, limitBreak, values, supportValues,
     })),
+    ...(ce.masterExpBonuses?.length ? { masterExpBonuses: ce.masterExpBonuses.map(({ skillId, functionId, limitBreak, values, supportValues }) => ({
+      skillId, functionId, limitBreak, values, supportValues,
+    })) } : {}),
+    ...(ce.mysticCodeExpBonuses?.length ? { mysticCodeExpBonuses: ce.mysticCodeExpBonuses.map(({ skillId, functionId, limitBreak, values, supportValues }) => ({
+      skillId, functionId, limitBreak, values, supportValues,
+    })) } : {}),
+    ...(ce.friendPointBonuses?.length ? { friendPointBonuses: ce.friendPointBonuses.map(({ skillId, functionId, functionType, limitBreak, values, supportValues }) => ({
+      skillId, functionId, functionType, limitBreak, values, supportValues,
+    })) } : {}),
     eventBonuses: ce.eventBonuses.map(({ detail: _detail, conditions: _conditions, group: _group, ...bonus }) => bonus),
     events: ce.events.map(({ id }) => ({ id })),
   };

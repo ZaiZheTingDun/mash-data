@@ -43,7 +43,7 @@ Update Action 的最终 summary 按资源类型列出**新增、修改、删除*
 4. 默认生成从 R2 当前版本到目标版本的 patch，保留已发布 base 和历史 patch 路线。从 R2 的上一版 manifest/state 读取历史对象校验信息和文件状态。
    选择 `base` 时，构建新基础包，同时生成从上一线上版本到本次版本的 patch，并在新 manifest 中保留历史 patch 链；空目标首次发布只构建 base。
 5. `publish=false` 时只构建和校验，不写 R2。`publish=true` 时先上传版本化 ZIP、state、校验文件，再上传 manifest；所有引用对象均从 R2 S3 API 回读并校验大小和 SHA-256，最后切换 `latest.json`。
-6. R2 发布及最终验证成功后，独立的 **Write published manifest and version to private** job 拉取 private 当前分支，将本次线上 manifest 写入 `assets/manifest.json`，并将已发布版本写入 `assets/version.json`，单独提交并普通 push。该提交只包含这两个文件，保留完整历史 patch、校验信息、state 引用和来源 commit。
+6. R2 发布及最终验证成功后，独立的 **Write published manifest and version to private** job 拉取 private 当前分支，将本次线上 manifest 写入 `assets/manifest.json`，并将已发布版本写入 `assets/version.json`，创建 `chore(data): sync published release v<版本>` 提交，再为该提交创建 `v<版本>` tag（例如 `v19`）。分支与 tag 通过一次 atomic push 同步到 private，任一引用冲突则均不更新，不覆盖已有 tag。该提交只包含这两个文件，保留完整历史 patch、校验信息、state 引用和来源 commit。`publish=false` 不创建 tag。
 
 workflow 输入：
 
@@ -57,7 +57,7 @@ pipeline 在 runner 内临时递增版本号，并根据线上 manifest 生成�
 
 回写 job 使用 private 分支的最新提交作为父提交，只暂存 `assets/manifest.json` 和 `assets/version.json`，其中版本配置仅修改 `version`，保留 `atlasExportDate` 等其他字段；不会覆盖数据或 state，也不要求 private 仍停留在构建使用的 commit。若期间已有新数据提交，manifest 记录本次已发布的数据快照，`source.dataCommit` 仍指向实际用于构建的数据 commit。写回前会核对线上 latest、本次发布版本和来源 commit；若线上版本已推进，或 private 的 manifest / version 已指向更高版本，则拒绝回写，避免旧任务覆盖较新的发布记录。
 
-R2 发布与 Git push 不能原子完成。回写推送失败时，线上版本已经发布，workflow 会明确显示“已发布、private 清单同步失败”，不会回滚 R2 或 force push。此时选择 **Re-run failed jobs**，只重跑回写 job，从 private 最新分支重新同步；不重新构建或发布数据包。若清单已经一致则跳过提交。GitHub 支持单独重跑失败 job，见 [官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)。
+R2 发布与 Git push 不能原子完成。回写推送失败时，线上版本已经发布，workflow 会明确显示“已发布、private 清单或 tag 同步失败”，不会回滚 R2 或 force push。此时选择 **Re-run failed jobs**，只重跑回写 job，从 private 最新分支重新同步；不重新构建或发布数据包。若清单已经一致则跳过提交，仍检查或补建 tag；即使分支已有后续数据提交，tag 也指向对应的发布同步提交。缺少历史时按需获取提交历史，不下载完整历史资源；找不到对应同步提交或 tag 指向冲突时失败。GitHub 支持单独重跑失败 job，见 [官方说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)。
 
 例如当前线上是 base v9、latest v14，发布 v15 并选择 `base`，将同时生成 base v15 和 `v14-to-v15.zip`，保留原有 patch 链。新安装可以使用新基础包，已安装旧资源的客户端可以沿保留的 patch 链更新；两类产物及其引用均校验完成后，才一起通过 latest 对外发布。
 
@@ -104,7 +104,7 @@ R2 发布与 Git push 不能原子完成。回写推送失败时，线上版本�
 | `R2_ACCESS_KEY_ID` | `assets-release` | R2 API 凭据，限目标桶读写 |
 | `R2_SECRET_ACCESS_KEY` | `assets-release` | 对应 R2 secret access key |
 
-公开库的 `GITHUB_TOKEN` 不能直接访问另一个 private 仓库，见 [checkout 官方说明](https://github.com/actions/checkout#checkout-multiple-repos-private)。公开库本身仅申请 `contents: read`；private 写权限来自专用 token。private 分支规则须允许该 token 所属账号提交数据变更。
+公开库的 `GITHUB_TOKEN` 不能直接访问另一个 private 仓库，见 [checkout 官方说明](https://github.com/actions/checkout#checkout-multiple-repos-private)。公开库本身仅申请 `contents: read`；private 写权限来自专用 token。private 分支规则须允许该 token 所属账号提交数据变更，tag 规则须允许创建 `v<版本>`。
 
 两个 workflow 不执行 private 仓库内的脚本，只把它作为数据目录；不会上传 private checkout、更新记录或资源包为公开 Actions artifact。公开库的运行日志和 summary 仍可公开查看，summary 保存 commit、版本、按资源类型统计的数量及发布/回写状态，详细更改记录留在 private。
 

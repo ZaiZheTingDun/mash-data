@@ -122,3 +122,9 @@ npm run resources:sync
 ## 失败行为
 
 raw 缺失或损坏时下载完整响应；仅精简文件缺失时从 raw 恢复。旧 basic 文件缺少 raw 时，离线汇总会提示先运行迁移命令。下载、解析、图片或活动索引失败时，该地区游标不推进；汇总失败时保留原有汇总文件。生产更新 Action 只有所有步骤成功后才提交 private 数据。
+
+`masterExpBonuses` 保留 `expUp` 的御主经验百分比或固定数量（`RateCount / 10`、`AddCount`），以及普通／满破、助战参数和条件。结构与 `bondBonuses` 相同，无此效果时省略字段；不包含 `userEquipExpUp`（魔术礼装经验）。
+
+`mysticCodeExpBonuses` 使用同样的奖励结构，单独保留 `userEquipExpUp` 的魔术礼装经验加成，包括百分比、固定数量、普通／满破、助战和适用条件。无此效果时省略字段，与御主经验分别展示。
+
+`friendPointBonuses` 保留 `friendPointUp` / `friendPointUpDuplicate` 的友情点数加成，以及 `functionType`（区分可叠加效果）、普通／满破、助战数值和条件。没有友情点数加成时省略字段，与从者牵绊加成分别保存。

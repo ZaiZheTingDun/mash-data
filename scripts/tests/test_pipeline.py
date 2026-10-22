@@ -160,6 +160,21 @@ class PipelineTests(unittest.TestCase):
                    "bondBonuses": [], "qpBonuses": [], "eventBonuses": [], "events": []}
         write_json(path, compact)
         validate_assets(self.root)
+        write_json(path, {**compact, "masterExpBonuses": {}})
+        with self.assertRaisesRegex(ValueError, "invalid craft essence masterExpBonuses"):
+            validate_assets(self.root)
+        write_json(path, {**compact, "masterExpBonuses": []})
+        validate_assets(self.root)
+        write_json(path, {**compact, "mysticCodeExpBonuses": {}})
+        with self.assertRaisesRegex(ValueError, "invalid craft essence mysticCodeExpBonuses"):
+            validate_assets(self.root)
+        write_json(path, {**compact, "mysticCodeExpBonuses": []})
+        validate_assets(self.root)
+        write_json(path, {**compact, "friendPointBonuses": {}})
+        with self.assertRaisesRegex(ValueError, "invalid craft essence friendPointBonuses"):
+            validate_assets(self.root)
+        write_json(path, {**compact, "friendPointBonuses": []})
+        validate_assets(self.root)
         missing_qp = {key: value for key, value in compact.items() if key != "qpBonuses"}
         write_json(path, missing_qp)
         with self.assertRaisesRegex(ValueError, "requires raw migration"):
