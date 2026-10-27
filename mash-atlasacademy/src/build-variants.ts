@@ -370,20 +370,23 @@ export function buildServantVariants(data: RawServant): ServantVariants {
 
   const variants: ServantVariant[] = [];
 
+  // Collect shared candidates independently of the default form: all forms may
+  // belong to override components. Preserve source order and ID deduplication.
+  const sharedSlots = emptySlots();
+  const seenSharedSkill = new Set<number>();
+  for (const skill of skills) {
+    const reqs = skillReqs.get(skill.id);
+    if (reqs && reqs.size > 0) continue;
+    if (seenSharedSkill.has(skill.id)) continue;
+    seenSharedSkill.add(skill.id);
+    sharedSlots[String(skill.num) as SlotKey].push(variantSkill(skill));
+  }
+
   const defaultIds = [
     ...ascensionKeys.filter((id) => !overridingFormIds.has(id)),
     ...costumeBattleCharaIds.filter((id) => !overridingFormIds.has(id)),
   ];
   if (defaultIds.length > 0) {
-    const slots = emptySlots();
-    const seenSkill = new Set<number>();
-    for (const skill of skills) {
-      const reqs = skillReqs.get(skill.id);
-      if (reqs && reqs.size > 0) continue;
-      if (seenSkill.has(skill.id)) continue;
-      seenSkill.add(skill.id);
-      slots[String(skill.num) as SlotKey].push(variantSkill(skill));
-    }
     const npNames: string[] = [];
     const seenNp = new Set<string>();
     for (const np of nps) {
@@ -395,7 +398,7 @@ export function buildServantVariants(data: RawServant): ServantVariants {
       npNames.push(np.name);
     }
     appendVisibleNpNameOverrides(npNames, seenNp, defaultIds, npNameOverrides);
-    variants.push({ ids: defaultIds, noblePhantasms: npNames, skills: slots });
+    variants.push({ ids: defaultIds, noblePhantasms: npNames, skills: sharedSlots });
   }
 
   const orderedComponents = [...components.values()].sort((a, b) => {
@@ -437,6 +440,13 @@ export function buildServantVariants(data: RawServant): ServantVariants {
       if (seenSkill.has(skill.id)) continue;
       seenSkill.add(skill.id);
       slots[String(skill.num) as SlotKey].push(variantSkill(skill));
+    }
+    // An override replaces its entire slot. Only slots without a matching
+    // override inherit shared skills; skills from other components stay out.
+    for (const slot of SLOT_KEYS) {
+      if (slots[slot].length === 0) {
+        slots[slot] = sharedSlots[slot].map((skill) => ({ ...skill }));
+      }
     }
     const npNames: string[] = [];
     const seenNp = new Set<string>();
