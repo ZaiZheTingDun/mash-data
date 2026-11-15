@@ -1,6 +1,8 @@
 export interface NiceServantAssetGroup {
   ascension?: Record<string, string>;
   costume?: Record<string, string>;
+  // Upstream costume URLs that returned 404; retry on every image update.
+  missingCostume?: Record<string, string>;
 }
 
 export interface NiceServantExtraAssets {

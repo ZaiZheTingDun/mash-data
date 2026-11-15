@@ -23,6 +23,8 @@
 5. 暂存 `assets/`、`state/`、`verification/result/` 的增删改，在 private 创建 `state/updates/<run-id>-<attempt>.json`。
 6. 将数据和记录一起提交、推送回同一 private 分支。没有文件变化时不创建记录或空提交。
 
+Atlas 可能提前提供尚未上线的灵衣图片地址。仅当从者 `commands`、`faces` 或 `narrowFigure` 的 `costume` 图片明确返回 HTTP 404 时，更新会记录警告，将该 URL 从 compact `servant.json` 的 `costume` 移至同组的 `missingCostume`，避免生成缺失的本地图片引用；原始 `servant-raw.json` 和灵衣/variant 元数据保留。每次更新都会重试这些 URL，即使数据版本未变；图片可用后自动恢复 `costume` 并清除缺失标记。基础再临图片的 404、其他 HTTP 错误、网络错误和空文件仍会阻止更新。图片先写临时文件，下载成功后才保存为最终文件。
+
 每条变更记录保存运行链接、工具 commit、更新前 private commit、JP/CN state 前后值、A/M/D 总数、`countsByResource` 分类数量以及完整文件路径清单。记录列出的文件不包含记录自身；需要查看具体字段差异时，对比该提交与父提交。
 
 Update Action 的最终 summary 按资源类型列出**新增、修改、删除**数量，包括从者数据、从者原始 JSON、从者图片、战斗形态、概念礼装数据与图片、技能数据与图标、魔术礼装数据与图片、资源汇总、客户端资源、Atlas 游标和分析报告。统计单位是文件，JP/CN 文件分别计数；从者及概念礼装的 raw 和精简 JSON 单列，图片也单列。没有变化的类型显示 0；summary 不公开具体文件路径，详细清单保留在 private 的更新记录中。推送失败时仍展示本次分类统计，并明确标记推送失败。

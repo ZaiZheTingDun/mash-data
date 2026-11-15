@@ -1,7 +1,9 @@
 import { basename, dirname, join } from "node:path";
+import { rename, rm, stat } from "node:fs/promises";
 import { fetchCraftEssence, fetchServant } from "./api.js";
 import {
   downloadFile,
+  DownloadHttpError,
   ensureDir,
   fileExists,
   readJson,
@@ -27,7 +29,7 @@ export async function downloadServantAssets(
 
   await ensureDir(servantDir);
 
-  const { data, refreshed } = await loadOrFetchServant(
+  const { refreshed } = await loadOrFetchServant(
     label,
     "JP",
     servantId,
@@ -40,27 +42,7 @@ export async function downloadServantAssets(
     downloadCount += 1;
   }
 
-  downloadCount += await downloadAssetGroup(
-    label,
-    servantDir,
-    "card_servant",
-    "commands",
-    data.extraAssets?.commands,
-  );
-  downloadCount += await downloadAssetGroup(
-    label,
-    servantDir,
-    "face_servant",
-    "faces",
-    data.extraAssets?.faces,
-  );
-  downloadCount += await downloadAssetGroup(
-    label,
-    servantDir,
-    "narrow_servant",
-    "narrowFigure",
-    data.extraAssets?.narrowFigure,
-  );
+  downloadCount += await downloadServantImages(servantId);
 
   return downloadCount > 0 ? "downloaded" : "skipped";
 }
@@ -161,7 +143,9 @@ export async function downloadServantImages(
 ): Promise<number> {
   const label = `servant ${servantId}`;
   const servantDir = join(options.servantsDir ?? SERVANTS_DIR, String(servantId));
-  const data = await readJson<NiceServant>(join(servantDir, "servant.json"));
+  const jsonPath = join(servantDir, "servant.json");
+  const data = await readJson<NiceServant>(jsonPath);
+  const previousAssets = JSON.stringify(data.extraAssets);
   const downloader = options.downloader ?? downloadFile;
 
   let downloadCount = 0;
@@ -189,6 +173,9 @@ export async function downloadServantImages(
     data.extraAssets?.narrowFigure,
     downloader,
   );
+  if (JSON.stringify(data.extraAssets) !== previousAssets) {
+    await writeJsonAtomic(jsonPath, data);
+  }
   return downloadCount;
 }
 
@@ -213,14 +200,23 @@ async function downloadAssetGroup(
     group.ascension,
     downloader,
   );
+  const costumes = { ...group.missingCostume, ...group.costume };
+  const missing: Record<string, string> = {};
   const costumeCount = await downloadAssetMap(
     label,
     servantDir,
     filePrefix,
     `${groupName}.costume`,
-    group.costume,
+    costumes,
     downloader,
+    (key, url) => { missing[key] = url; },
   );
+  if (Object.keys(missing).length > 0 || group.missingCostume) {
+    // Keep absent images out of client references without losing their retry URLs.
+    group.costume = Object.fromEntries(Object.entries(costumes).filter(([key]) => !(key in missing)));
+    if (Object.keys(missing).length > 0) group.missingCostume = missing;
+    else delete group.missingCostume;
+  }
   return ascensionCount + costumeCount;
 }
 
@@ -231,12 +227,13 @@ async function downloadAssetMap(
   groupLabel: string,
   assets: Record<string, string> | undefined,
   downloader: (url: string, destPath: string) => Promise<void>,
+  onMissing?: (key: string, url: string) => void,
 ): Promise<number> {
   if (!assets || Object.keys(assets).length === 0) {
     return 0;
   }
 
-  const results = await Promise.all(
+  const results = await Promise.allSettled(
     Object.entries(assets)
       .filter(([, url]) => typeof url === "string" && url.length > 0)
       .map(async ([key, url]): Promise<number> => {
@@ -244,7 +241,21 @@ async function downloadAssetMap(
         if (await fileExists(dest)) {
           return 0;
         }
-        await downloader(url, dest);
+        const temp = join(servantDir, `.${filePrefix}_${key}.${process.pid}.tmp`);
+        try {
+          await downloader(url, temp);
+          if ((await stat(temp)).size === 0) throw new Error(`Empty image download: ${url}`);
+          await rename(temp, dest);
+        } catch (error) {
+          if (onMissing && error instanceof DownloadHttpError && error.status === 404) {
+            onMissing(key, url);
+            console.warn(`[${label}] Atlas has no ${groupLabel} ${key}: ${url}; will retry next update`);
+            return 0;
+          }
+          throw error;
+        } finally {
+          await rm(temp, { force: true });
+        }
         console.log(
           `[${label}] Downloaded ${groupLabel} ${key} -> ${dest}`,
         );
@@ -252,7 +263,12 @@ async function downloadAssetMap(
       }),
   );
 
-  return results.reduce<number>((sum, n) => sum + n, 0);
+  let downloaded = 0;
+  for (const result of results) {
+    if (result.status === "rejected") throw result.reason;
+    downloaded += result.value;
+  }
+  return downloaded;
 }
 
 export async function downloadCraftEssenceAssets(
