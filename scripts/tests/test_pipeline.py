@@ -642,6 +642,27 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "newer than this release"):
             sync_manifest(self.root, self.store, 1, source_commit)
 
+    def test_missing_costume_metadata_does_not_exempt_referenced_images(self):
+        path = self.root / "assets/servants/1/servant.json"
+        url = "https://static.atlasacademy.io/JP/Servants/Commands/705500/card_servant_11.png"
+        payload = {"id": 705500, "extraAssets": {"commands": {
+            "ascension": {"1": "ascension-url"}, "costume": {},
+            "missingCostume": {"705530": url}}}}
+        Image.new("RGB", (2, 2)).save(path.parent / "card_servant_1.png")
+        write_json(path, payload)
+        validate_assets(self.root)
+        # A missing marker cannot excuse a dangling client reference.
+        payload["extraAssets"]["commands"]["costume"]["705530"] = url
+        write_json(path, payload)
+        with self.assertRaisesRegex(ValueError, "missing referenced image"):
+            validate_assets(self.root)
+        # Ascension images still remain mandatory.
+        payload["extraAssets"]["commands"]["costume"] = {}
+        write_json(path, payload)
+        (path.parent / "card_servant_1.png").unlink()
+        with self.assertRaisesRegex(ValueError, "missing referenced image"):
+            validate_assets(self.root)
+
     def test_corrupt_image_and_missing_reference_fail_validation(self):
         target = self.root / "assets" / "icons" / "image.png"
         target.write_bytes(b"broken")

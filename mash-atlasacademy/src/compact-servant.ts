@@ -46,7 +46,7 @@ function pick(source: JsonRecord, fields: readonly string[]): JsonRecord {
 
 function compactAssetGroup(value: unknown): JsonRecord | undefined {
   if (!isRecord(value)) return undefined;
-  return pick(value, ["ascension", "costume"]);
+  return pick(value, ["ascension", "costume", "missingCostume"]);
 }
 
 function compactExtraAssets(value: unknown): JsonRecord | undefined {
